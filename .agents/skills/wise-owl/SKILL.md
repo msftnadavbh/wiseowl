@@ -143,6 +143,8 @@ Each critic must return:
 }
 ```
 
+Critic verdicts are strict: use `pass` only when `findings` is empty, `concerns` when findings exist but none are blocking, and `blocked` when at least one finding is blocking. `evidence` must be one non-empty string, never an array.
+
 If there are no meaningful findings, return exactly:
 
 ```json
@@ -193,6 +195,8 @@ Prime Owl verdicts are strict:
 
 Every critic finding must be accepted, merged into an accepted finding with its `source_id` preserved, or rejected. No `source_id` may appear twice.
 
+Prime Owl accepted-finding `evidence` must be one non-empty string. Use `required_builder_action`; never use `required_fix`. Use only the categories and rejection reasons shown below.
+
 Prime Owl output:
 
 ```json
@@ -239,6 +243,17 @@ If no accepted findings remain, Prime Owl must return exactly:
 ```
 
 Pass/no-finding Prime Owl results must still validate against the Prime Owl schema. Do not return `role`, `findings`, or `notes`; do not omit `accepted_findings`, `rejected_findings`, or `builder_instructions`. A raw `pass` packet missing those required fields is malformed.
+
+## Packet Validation
+
+Validate every returned packet before trusting it. `--mode` also enforces the exact critic role set and rejects duplicate roles:
+
+```bash
+python3 scripts/wise_owl_validate_packet.py --type critic --file critic.json
+python3 scripts/wise_owl_validate_packet.py --type prime --file prime.json --mode standard --critics logic.json proof.json
+```
+
+Mode role sets are `lite` with no critics, `standard` with Logic Owl and Proof Owl, `security` with Guardian Owl, and `full` with all three critics. Without `--critics` or `--mode`, Prime validation is syntax/schema-only and must not be reported as source accounting.
 
 ## Builder Rules After Prime Owl
 

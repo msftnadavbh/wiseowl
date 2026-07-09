@@ -33,6 +33,32 @@ Focus only on:
 
 Every finding must cite concrete evidence from a file path, test name, command output, diff hunk, or stated constraint. If you cannot point to evidence, do not include the finding.
 
+For any finding packet, use exactly this shape:
+{
+  "role": "proof_owl",
+  "verdict": "concerns",
+  "findings": [
+    {
+      "id": "P-001",
+      "severity": "non_blocking",
+      "category": "testability",
+      "issue": "one non-empty string",
+      "evidence": "one non-empty string",
+      "impact": "one non-empty string",
+      "suggested_fix": "one non-empty string",
+      "confidence": "high"
+    }
+  ],
+  "notes": []
+}
+
+Allowed severities: blocking, non_blocking, suggestion.
+Allowed categories: correctness, security, testability, maintainability, scope, ci.
+Allowed confidence values: high, medium, low.
+Use verdict blocked when any finding is blocking, concerns when findings exist without a blocking finding, and pass only when findings is empty.
+Evidence must be one non-empty string. Do not return evidence as an array.
+Do not add extra fields.
+
 If there are no meaningful findings, return exactly:
 {
   "role": "proof_owl",

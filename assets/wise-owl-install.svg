@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1280" height="560" viewBox="0 0 1280 560" role="img" aria-labelledby="title desc">
   <title id="title">Wise Owl install preview</title>
-  <desc id="desc">A screenshot style terminal preview showing clone, dry run, install, restart Codex, and ask Codex to use Wise Owl.</desc>
+  <desc id="desc">A screenshot style terminal preview showing clone, dry run, install, verification, restart Codex, and ask Codex to use Wise Owl.</desc>
   <defs>
     <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
       <stop offset="0" stop-color="#f8fbff"/>
@@ -25,7 +25,7 @@
   <circle cx="120" cy="500" r="230" fill="#52b9da" opacity="0.16"/>
 
   <text x="72" y="74" class="title">Install in 60 seconds</text>
-  <text x="76" y="114" class="sub">Clone, dry-run, install, restart Codex, and ask for Wise Owl when a review matters.</text>
+  <text x="76" y="114" class="sub">Clone, dry-run, install, verify, then ask Codex for a sharper second opinion.</text>
 
   <g filter="url(#shadow)">
     <rect x="74" y="154" width="1132" height="292" rx="24" fill="#07172e"/>
@@ -34,11 +34,12 @@
     <circle cx="134" cy="182" r="7" fill="#ffd166"/>
     <circle cx="158" cy="182" r="7" fill="#67d391"/>
 
-    <text x="104" y="256" class="code"><tspan class="prompt">$</tspan> git clone https://github.com/msftnadavbh/wiseowl.git</text>
-    <text x="104" y="296" class="code"><tspan class="prompt">$</tspan> cd wiseowl</text>
-    <text x="104" y="336" class="code"><tspan class="prompt">$</tspan> python3 install.py --dry-run</text>
-    <text x="104" y="376" class="code"><tspan class="prompt">$</tspan> python3 install.py</text>
-    <text x="104" y="416" class="code"><tspan class="ok">ok</tspan> Skill installed. Custom agents copied. Config merged.</text>
+    <text x="104" y="246" class="code"><tspan class="prompt">$</tspan> git clone https://github.com/msftnadavbh/wiseowl.git</text>
+    <text x="104" y="282" class="code"><tspan class="prompt">$</tspan> cd wiseowl</text>
+    <text x="104" y="318" class="code"><tspan class="prompt">$</tspan> python3 install.py --dry-run</text>
+    <text x="104" y="354" class="code"><tspan class="prompt">$</tspan> python3 install.py</text>
+    <text x="104" y="390" class="code"><tspan class="prompt">$</tspan> python3 install.py --check</text>
+    <text x="104" y="426" class="code"><tspan class="ok">ok</tspan> Wise Owl ready. Restart Codex and ask for a review.</text>
   </g>
 
   <g>
@@ -47,8 +48,8 @@
     <rect x="368" y="482" width="238" height="42" rx="21" fill="#ffffff" stroke="#cfe2eb"/>
     <text x="396" y="509" class="step">2. Install safely</text>
     <rect x="636" y="482" width="250" height="42" rx="21" fill="#ffffff" stroke="#cfe2eb"/>
-    <text x="664" y="509" class="step">3. Restart Codex</text>
+    <text x="664" y="509" class="step">3. Verify setup</text>
     <rect x="916" y="482" width="276" height="42" rx="21" fill="#ffffff" stroke="#cfe2eb"/>
-    <text x="944" y="509" class="step">4. Ask for Wise Owl</text>
+    <text x="944" y="509" class="step">4. Ask in Codex</text>
   </g>
 </svg>

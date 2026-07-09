@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import os
 import runpy
 import sys
 from pathlib import Path
@@ -14,8 +15,7 @@ INSTALLER = ROOT / ".agents" / "skills" / "wise-owl" / "scripts" / "wise_owl_ins
 
 def main() -> int:
     args = sys.argv[1:]
-    if "--scope" not in args:
-        args = ["--scope", "user", *args]
+    os.environ["WISE_OWL_INSTALL_PROG"] = Path(sys.argv[0]).name
     sys.argv = [str(INSTALLER), *args]
     runpy.run_path(str(INSTALLER), run_name="__main__")
     return 0

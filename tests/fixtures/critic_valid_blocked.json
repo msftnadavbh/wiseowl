@@ -1,0 +1,17 @@
+{
+  "role": "guardian_owl",
+  "verdict": "blocked",
+  "findings": [
+    {
+      "id": "G-BLOCK-VALID-001",
+      "severity": "blocking",
+      "category": "security",
+      "issue": "A trust-boundary violation blocks release.",
+      "evidence": "The supplied review packet documents sensitive data crossing a trust boundary.",
+      "impact": "Sensitive data could leave the intended boundary.",
+      "suggested_fix": "Remove the boundary crossing before release.",
+      "confidence": "high"
+    }
+  ],
+  "notes": []
+}

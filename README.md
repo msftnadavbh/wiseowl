@@ -38,6 +38,7 @@ cd wiseowl
 
 python3 install.py --dry-run
 python3 install.py
+python3 install.py --check
 ```
 
 Restart or reopen Codex, then ask:
@@ -46,7 +47,7 @@ Restart or reopen Codex, then ask:
 Use Wise Owl Standard to review this change before I finalize.
 ```
 
-That is the whole first run. The dry run previews the install, and the normal run adds the Wise Owl skill, the custom reviewer agents, and the small Codex config merge.
+That is the whole first run. The dry run previews the install, the normal run adds Wise Owl, and the check confirms the complete read-only reviewer setup is in the expected Codex locations. Wise Owl requires Python 3.10+ and uses only the standard library.
 
 <p align="center">
   <img src="assets/wise-owl-install.png" alt="Wise Owl install preview">
@@ -100,8 +101,36 @@ Use Wise Owl Full Council for this release gate.
 - `~/.agents/skills/wise-owl`: the Codex skill.
 - `~/.codex/agents`: the read-only custom reviewer TOMLs.
 - `~/.codex/config.toml`: a safe merge for Codex agent settings.
+- `~/.agents/skills/wise-owl/.wise-owl-install.json`: hashes for Wise Owl-owned files, used for safe upgrades and uninstall.
 
 First-time installs should use the dry run and normal install shown above. `--force` exists for intentional overwrites or legacy agent cleanup.
+
+## Keep It Healthy
+
+Check the installation at any time:
+
+```bash
+python3 install.py --check
+```
+
+Upgrade after pulling a newer release:
+
+```bash
+git pull
+python3 install.py --dry-run
+python3 install.py
+python3 install.py --check
+```
+
+Wise Owl upgrades files it previously installed only when their hashes still match. Local customizations are preserved and reported instead of overwritten.
+
+Installations created before v0.2.0 have no ownership manifest. Review the dry run and use `--force` once to migrate that older install; later upgrades return to the safe hash-based path.
+
+Uninstall Wise Owl-owned files while leaving shared Codex config and `AGENTS.md` content alone:
+
+```bash
+python3 install.py --uninstall
+```
 
 ## Docs
 

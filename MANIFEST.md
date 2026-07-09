@@ -1,4 +1,4 @@
-# Wise Owl v0.1.0 Manifest
+# Wise Owl v0.2.0 Manifest
 
 Expected package contents:
 - `README.md`
@@ -7,6 +7,7 @@ Expected package contents:
 - `CHANGELOG.md`
 - `AGENTS.md`
 - `.gitignore`
+- `.github/workflows/verify.yml`
 - `.agents/skills/wise-owl/**`
 - `.codex/config.toml`
 - `.codex/agents/logic_owl.toml`

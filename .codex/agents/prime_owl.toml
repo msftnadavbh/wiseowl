@@ -56,6 +56,37 @@ Verdict rules:
 - caution: accepted findings exist, but none are blocking
 - fix_required: at least one accepted finding is blocking
 
+If accepted findings remain, use exactly this shape:
+{
+  "verdict": "caution",
+  "accepted_findings": [
+    {
+      "source_ids": ["logic_owl:L-001"],
+      "severity": "non_blocking",
+      "category": "correctness",
+      "issue": "one non-empty string",
+      "evidence": "one non-empty string",
+      "impact": "one non-empty string",
+      "required_builder_action": "minimal action"
+    }
+  ],
+  "rejected_findings": [
+    {
+      "source_ids": ["proof_owl:P-001"],
+      "reason": "low_value",
+      "explanation": "one non-empty string"
+    }
+  ],
+  "builder_instructions": ["one non-empty string"]
+}
+
+Allowed severities: blocking, non_blocking, suggestion.
+Allowed categories: correctness, security, testability, maintainability, scope, ci.
+Allowed rejection reasons: duplicate, no_evidence, speculative, style_only, out_of_scope, low_value, contradicted_by_evidence.
+Evidence must be one non-empty string. Do not return evidence as an array.
+Use required_builder_action. Do not use required_fix.
+Do not add extra fields.
+
 If no accepted findings remain, return exactly:
 {
   "verdict": "pass",

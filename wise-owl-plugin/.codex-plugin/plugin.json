@@ -1,6 +1,6 @@
 {
   "name": "wise-owl",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Read-only multi-agent second-opinion review workflow for Codex.",
   "skills": "./skills/",
   "interface": {

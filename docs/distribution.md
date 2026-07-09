@@ -8,12 +8,12 @@ Publish the repository after validation:
 
 ```bash
 python3 scripts/verify_release.py
-git tag v0.1.0
+git tag v0.2.0
 git remote -v
 git remote add origin git@github.com:OWNER/REPO.git
 git branch -M main
 git push -u origin main
-git push origin v0.1.0
+git push origin v0.2.0
 ```
 
 Do not push until the working tree is reviewed and the release archive has been inspected.
@@ -26,11 +26,12 @@ Build the local zip:
 python3 scripts/build_release_archive.py
 ```
 
-The archive is written to `dist/wise-owl-v0.1.0.zip`. A tarball can be built from the same included file set if needed.
+The archive is written to `dist/wise-owl-v0.2.0.zip`. The version is read from the plugin manifest. A tarball can be built from the same included file set if needed.
 
 ## Include
 
 - Root files: `README.md`, `install.py`, `LICENSE`, `CHANGELOG.md`, `AGENTS.md`, `MANIFEST.md`, `.gitignore`
+- GitHub verification workflow under `.github/workflows/`
 - Wise Owl skill under `.agents/skills/wise-owl/`
 - Repo-local custom agents under `.codex/agents/`
 - `.codex/config.toml`
@@ -63,8 +64,8 @@ The archive is written to `dist/wise-owl-v0.1.0.zip`. A tarball can be built fro
 
 ## Plugin Skeleton
 
-`wise-owl-plugin/` packages the skill, plugin manifest, copied agent TOML assets, logo assets, a workflow screenshot asset, and a plugin installer. Plugin users still need custom agent TOMLs copied into Codex-discovered locations; the plugin installer does that copy.
+`wise-owl-plugin/` packages the complete skill tree, plugin manifest, generated agent TOML assets, logo assets, a workflow screenshot asset, and the generated standalone installer. Plugin users still need custom agent TOMLs copied into Codex-discovered locations; the plugin installer does that copy. Run `python3 scripts/sync_plugin_assets.py --check` before distribution.
 
 ## User-Local Caveat
 
-User-local install writes the skill to `~/.agents/skills/wise-owl`, custom agents to `~/.codex/agents`, and config to `~/.codex/config.toml`. Run `--dry-run` first. Use `--force` only after reviewing target paths.
+User-local install writes the skill to `~/.agents/skills/wise-owl`, custom agents to `~/.codex/agents`, and config to `~/.codex/config.toml`. Run `--dry-run` first, then `--check`. The managed manifest permits safe upgrades of unchanged owned files. Use `--force` only after reviewing target paths.

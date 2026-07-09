@@ -79,6 +79,12 @@ Full Council is complete only when all three critic packets and the Prime Owl pa
 
 ## Verdict Semantics
 
+Critic verdicts are strict:
+- `pass`: use pass only when `findings` is empty.
+- `concerns`: findings exist, but none are blocking.
+- `blocked`: at least one finding is blocking.
+
+Prime Owl verdicts are strict:
 - `pass`: no accepted findings remain.
 - `caution`: accepted findings exist, but none are blocking.
 - `fix_required`: at least one accepted finding is blocking.
@@ -86,6 +92,8 @@ Full Council is complete only when all three critic packets and the Prime Owl pa
 Prime Owl must not return `fix_required` for only `non_blocking` or `suggestion` accepted findings.
 
 Prime Owl may merge findings only when they share the same root cause and the merged severity/category accurately applies to every source ID. Do not merge a blocking security finding with a non-blocking release checklist or documentation-hygiene finding merely because both mention docs. Split them, or reject the weaker finding as duplicate only when the accepted finding fully covers the same root cause without changing its meaning.
+
+Critic and accepted-finding `evidence` must be one non-empty string, not an array. Prime Owl must use `required_builder_action`, never `required_fix`.
 
 ## Pass Packets
 
@@ -134,10 +142,13 @@ From this repo:
 python3 .agents/skills/wise-owl/scripts/wise_owl_install.py --scope repo --patch-agents-md
 ```
 
+Repo scope intentionally targets the current working directory. This lets a standalone Wise Owl checkout install into another repository. Set `WISE_OWL_REPO_ROOT` when the target should not be the current directory.
+
 Preview without writing:
 
 ```bash
 python3 .agents/skills/wise-owl/scripts/wise_owl_install.py --scope repo --dry-run --patch-agents-md
+python3 .agents/skills/wise-owl/scripts/wise_owl_install.py --scope repo --check
 ```
 
 ## User-Local Install
@@ -149,6 +160,7 @@ By default, user install targets:
 
 ```bash
 python3 .agents/skills/wise-owl/scripts/wise_owl_install.py --scope user
+python3 .agents/skills/wise-owl/scripts/wise_owl_install.py --scope user --check
 ```
 
 Override paths for testing or unusual local Codex layouts:
@@ -158,6 +170,8 @@ WISE_OWL_CODEX_HOME=/path/to/.codex WISE_OWL_USER_SKILLS_HOME=/path/to/.agents p
 ```
 
 Installer migration behavior: if legacy `owl_eyes.toml`, `owl_guard.toml`, or `owl_proof.toml` files exist in the target agent directory, the installer warns. Rerun with `--force` to remove those legacy TOMLs while installing `logic_owl.toml`, `guardian_owl.toml`, `proof_owl.toml`, and `prime_owl.toml`.
+
+Successful installs create a managed install manifest inside the skill directory. Later installs can update unchanged Wise Owl-owned files without `--force`, while local modifications remain protected. Use `--uninstall` to remove unchanged owned files; shared `config.toml` and `AGENTS.md` content is left intact.
 
 ## Plugin Skeleton
 
@@ -396,9 +410,12 @@ python3 .agents/skills/wise-owl/scripts/wise_owl_validate_packet.py --type criti
 python3 .agents/skills/wise-owl/scripts/wise_owl_validate_packet.py --type prime --file prime.json
 python3 .agents/skills/wise-owl/scripts/wise_owl_validate_packet.py --type prime --file prime.json --critics critic1.json critic2.json critic3.json
 python3 .agents/skills/wise-owl/scripts/wise_owl_validate_packet.py --type prime --file prime.json --require-critics --critics critic1.json critic2.json
+python3 .agents/skills/wise-owl/scripts/wise_owl_validate_packet.py --type prime --file prime.json --mode standard --critics logic.json proof.json
+python3 .agents/skills/wise-owl/scripts/wise_owl_validate_packet.py --type prime --file prime.json --mode security --critics guardian.json
+python3 .agents/skills/wise-owl/scripts/wise_owl_validate_packet.py --type prime --file prime.json --mode full --critics logic.json guardian.json proof.json
 ```
 
-Without `--critics`, Prime validation is syntax/schema-only and prints that source accounting was not checked. With `--critics`, validation checks that every critic finding is accepted, merged, or rejected exactly once, using stable role IDs such as `guardian_owl:G-001`. Use full-accounting validation for release checks.
+Without `--critics` or `--mode`, Prime validation is syntax/schema-only and prints that source accounting was not checked. With `--critics`, validation checks that every critic finding is accepted, merged, or rejected exactly once, using stable role IDs such as `guardian_owl:G-001`. `--mode` additionally requires the exact selected reviewer set and rejects duplicate roles. Use mode-aware full-accounting validation for release checks.
 
 ## First-Use Learnings
 
@@ -408,16 +425,11 @@ Without `--critics`, Prime validation is syntax/schema-only and prints that sour
 - Partial council runs are still useful, but must be labeled partial.
 - Lifecycle cleanup failures belong in `Execution issues`, not hidden in prose.
 
-## Known Limitations
+## Design Boundaries
 
-- Subagents consume extra tokens and latency.
-- Subagents must be explicitly requested or triggered by skill matching.
-- Scripts cannot reliably know the active interactive Codex model.
-- Model diversity depends on available Codex models and configuration.
-- Read-only reviewer instructions complement, but do not replace, Codex runtime sandbox and approval policy.
-- The MVP does not call external model APIs.
-- The plugin skeleton packages assets, but the installer still needs to copy custom agent TOMLs into Codex-discovered locations.
-- Parallel execution depends on Codex subagent support/runtime behavior.
-- Lite and Standard are faster but reduce coverage compared with Full Council.
-- Partial review must be treated as degraded confidence.
-- Wise Owl mode selection is policy-guided through SKILL.md and AGENTS.md, not a background hook.
+- Wise Owl stays a local Codex skill and custom-agent workflow. It does not call model APIs directly or run background services.
+- Parallel execution and available models depend on the active Codex runtime.
+- Read-only reviewer instructions complement Codex sandbox and approval policy.
+- The plugin installer copies custom agent TOMLs into Codex-discovered locations.
+- Lite and Standard optimize for speed; Full Council provides the broadest coverage.
+- Partial reviews remain useful only when their reduced confidence is reported explicitly.

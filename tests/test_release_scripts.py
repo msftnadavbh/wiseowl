@@ -1,5 +1,10 @@
 import importlib.util
+import json
+import subprocess
+import sys
+import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 
 
@@ -23,6 +28,10 @@ class ReleaseScriptTests(unittest.TestCase):
         build_release_archive = load_script("build_release_archive")
         self.assertFalse(build_release_archive.should_include(ROOT / "__pycache__" / "x.pyc"))
         self.assertFalse(build_release_archive.should_include(ROOT / ".env"))
+        with tempfile.TemporaryDirectory() as directory:
+            install_manifest = Path(directory) / ".wise-owl-install.json"
+            install_manifest.write_text("{}", encoding="utf-8")
+            self.assertFalse(build_release_archive.should_include(install_manifest))
         self.assertTrue(build_release_archive.should_include(ROOT / "README.md"))
 
     def test_archive_surface_matches_documented_files(self):
@@ -49,6 +58,104 @@ class ReleaseScriptTests(unittest.TestCase):
         self.assertTrue(expected.issubset(files))
         self.assertFalse(any(path.startswith("dist/") for path in files))
         self.assertFalse(any("__pycache__" in path for path in files))
+
+    def test_release_scripts_resolve_root_from_their_file(self):
+        verify_release = load_script("verify_release")
+        build_release_archive = load_script("build_release_archive")
+        self.assertEqual(verify_release.repo_root(), ROOT)
+        self.assertEqual(build_release_archive.repo_root(), ROOT)
+
+    def test_static_verifier_runs_from_a_different_working_directory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            result = subprocess.run(
+                [sys.executable, str(ROOT / "scripts" / "verify_release.py"), "--static"],
+                cwd=directory,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Static release verification passed.", result.stdout)
+
+    def test_archive_list_runs_from_a_different_working_directory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            result = subprocess.run(
+                [sys.executable, str(ROOT / "scripts" / "build_release_archive.py"), "--list"],
+                cwd=directory,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(".codex/agents/logic_owl.toml", result.stdout)
+
+    def test_release_version_comes_from_plugin_manifest(self):
+        verify_release = load_script("verify_release")
+        build_release_archive = load_script("build_release_archive")
+        expected = json.loads((ROOT / "wise-owl-plugin" / ".codex-plugin" / "plugin.json").read_text())["version"]
+        self.assertEqual(verify_release.release_version(ROOT), expected)
+        self.assertEqual(build_release_archive.release_version(ROOT), expected)
+        self.assertEqual(build_release_archive.archive_name(ROOT), f"wise-owl-v{expected}.zip")
+
+    def test_next_release_metadata_is_v020(self):
+        verify_release = load_script("verify_release")
+        self.assertEqual(verify_release.release_version(ROOT), "0.2.0")
+        self.assertIn("## v0.2.0 - Unreleased", (ROOT / "CHANGELOG.md").read_text(encoding="utf-8"))
+        self.assertIn("# Wise Owl v0.2.0 Manifest", (ROOT / "MANIFEST.md").read_text(encoding="utf-8"))
+
+    def test_built_archive_has_exact_selected_members(self):
+        build_release_archive = load_script("build_release_archive")
+        with tempfile.TemporaryDirectory() as directory:
+            archive = build_release_archive.build_archive(ROOT, Path(directory))
+            with zipfile.ZipFile(archive) as handle:
+                names = handle.namelist()
+        expected = (ROOT / "tests" / "fixtures" / "release_archive_members.txt").read_text(encoding="utf-8").splitlines()
+        self.assertEqual(names, expected)
+
+    def test_archive_uses_reproducible_timestamps(self):
+        build_release_archive = load_script("build_release_archive")
+        with tempfile.TemporaryDirectory() as directory:
+            archive = build_release_archive.build_archive(ROOT, Path(directory))
+            with zipfile.ZipFile(archive) as handle:
+                timestamps = {item.date_time for item in handle.infolist()}
+        self.assertEqual(timestamps, {(1980, 1, 1, 0, 0, 0)})
+
+    def test_installer_smoke_is_confined_to_supplied_sandbox(self):
+        verify_release = load_script("verify_release")
+        with tempfile.TemporaryDirectory() as directory:
+            sandbox = Path(directory)
+            errors = verify_release.installer_smoke(ROOT, sandbox)
+            written = [path for path in sandbox.rglob("*") if path.is_file()]
+        self.assertEqual(errors, [])
+        self.assertTrue(written)
+        self.assertTrue(all(str(path).startswith(str(sandbox)) for path in written))
+
+    def test_ci_uses_the_canonical_release_verifier(self):
+        workflow = ROOT / ".github" / "workflows" / "verify.yml"
+        self.assertTrue(workflow.is_file())
+        text = workflow.read_text(encoding="utf-8")
+        self.assertIn('python-version: ["3.10", "3.12", "3.14"]', text)
+        self.assertIn("python3 scripts/verify_release.py", text)
+        self.assertIn("permissions:\n  contents: read", text)
+
+    def test_plugin_package_matches_canonical_sources(self):
+        sync_plugin_assets = load_script("sync_plugin_assets")
+        self.assertEqual(sync_plugin_assets.verify(ROOT), [])
+
+        plugin_skill = ROOT / "wise-owl-plugin" / "skills" / "wise-owl"
+        self.assertTrue((plugin_skill / "references" / "finding-schema.md").is_file())
+        self.assertTrue((plugin_skill / "references" / "severity-rubric.md").is_file())
+        self.assertTrue((plugin_skill / "scripts" / "wise_owl_validate_packet.py").is_file())
+        self.assertEqual(
+            (ROOT / ".agents" / "skills" / "wise-owl" / "scripts" / "wise_owl_install.py").read_bytes(),
+            (ROOT / "wise-owl-plugin" / "scripts" / "install_wise_owl.py").read_bytes(),
+        )
+
+    def test_workflow_preview_shows_a_consistent_full_council(self):
+        workflow = (ROOT / "assets" / "wise-owl-workflow.svg").read_text(encoding="utf-8")
+        self.assertIn("Use Wise Owl Full Council", workflow)
+        self.assertIn("Guardian Owl, then Prime Owl", workflow)
+        self.assertNotIn("Use Wise Owl Standard", workflow)
 
     def test_public_docs_do_not_contain_local_user_paths_or_em_dashes(self):
         public_files = [

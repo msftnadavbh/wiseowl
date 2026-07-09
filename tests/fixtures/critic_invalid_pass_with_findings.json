@@ -1,0 +1,17 @@
+{
+  "role": "logic_owl",
+  "verdict": "pass",
+  "findings": [
+    {
+      "id": "L-PASS-001",
+      "severity": "non_blocking",
+      "category": "correctness",
+      "issue": "A pass packet cannot contain findings.",
+      "evidence": "The packet includes this finding while declaring pass.",
+      "impact": "The verdict contradicts the packet contents.",
+      "suggested_fix": "Return concerns or remove the finding.",
+      "confidence": "high"
+    }
+  ],
+  "notes": ["No meaningful issues found."]
+}

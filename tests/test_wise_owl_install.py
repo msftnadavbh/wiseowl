@@ -1,4 +1,6 @@
 import importlib.util
+import json
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -35,6 +37,15 @@ class WiseOwlInstallTests(unittest.TestCase):
 
     def tearDown(self):
         self.tmp.cleanup()
+
+    def make_template(self):
+        template = self.root / "template"
+        shutil.copytree(ROOT / ".agents", template / ".agents")
+        shutil.copytree(ROOT / ".codex", template / ".codex")
+        manifest = template / "wise-owl-plugin" / ".codex-plugin" / "plugin.json"
+        manifest.parent.mkdir(parents=True)
+        manifest.write_text((ROOT / "wise-owl-plugin" / ".codex-plugin" / "plugin.json").read_text(), encoding="utf-8")
+        return template
 
     def test_dry_run_does_not_write_files(self):
         changed = self.installer.install("repo", self.root, self.codex_home, dry_run=True, template_root=ROOT)
@@ -93,8 +104,24 @@ class WiseOwlInstallTests(unittest.TestCase):
             check=False,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("Would change (dry run):", result.stdout)
+        self.assertIn("Wise Owl dry run for repo scope.", result.stdout)
+        self.assertIn("Would change", result.stdout)
+        self.assertIn("No files were written.", result.stdout)
+        self.assertIn(str(self.root / ".agents" / "skills" / "wise-owl"), result.stdout)
+        self.assertNotIn("SKILL.md\n", result.stdout)
         self.assertFalse((self.root / ".agents").exists())
+
+    def test_verbose_dry_run_lists_changed_paths(self):
+        result = subprocess.run(
+            [sys.executable, str(INSTALLER), "--scope", "repo", "--dry-run", "--verbose"],
+            cwd=self.root,
+            env={"WISE_OWL_TEMPLATE_ROOT": str(ROOT)},
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(str(self.root / ".agents" / "skills" / "wise-owl" / "SKILL.md"), result.stdout)
 
     def test_root_installer_defaults_to_user_scope(self):
         result = subprocess.run(
@@ -109,9 +136,327 @@ class WiseOwlInstallTests(unittest.TestCase):
             check=False,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("Would change (dry run):", result.stdout)
+        self.assertIn("Wise Owl dry run for user scope.", result.stdout)
         self.assertIn(str(self.user_skills_home / "skills" / "wise-owl"), result.stdout)
         self.assertFalse((self.user_skills_home / "skills").exists())
+
+    def test_root_installer_help_uses_public_entrypoint_name(self):
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "install.py"), "--help"],
+            cwd=self.root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("usage: install.py", result.stdout)
+        self.assertNotIn("usage: wise_owl_install.py", result.stdout)
+        self.assertIn("repo uses current", result.stdout)
+        self.assertIn("working directory", result.stdout)
+
+    def test_underlying_installer_defaults_to_user_scope(self):
+        result = subprocess.run(
+            [sys.executable, str(INSTALLER), "--dry-run"],
+            cwd=self.root,
+            env={
+                "HOME": str(self.root / "home"),
+                "WISE_OWL_TEMPLATE_ROOT": str(ROOT),
+            },
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(str(self.user_skills_home / "skills" / "wise-owl"), result.stdout)
+
+    def test_check_passes_after_install_and_detects_missing_agent(self):
+        self.installer.install("user", self.root, self.codex_home, template_root=ROOT)
+        self.assertEqual(
+            self.installer.check_install("user", self.root, self.codex_home, self.user_skills_home),
+            [],
+        )
+
+        (self.codex_home / "agents" / "proof_owl.toml").unlink()
+        errors = self.installer.check_install("user", self.root, self.codex_home, self.user_skills_home)
+        self.assertTrue(any("missing agent TOML: proof_owl.toml" in error for error in errors), errors)
+
+    def test_check_fails_when_managed_manifest_is_missing(self):
+        self.installer.install("user", self.root, self.codex_home, template_root=ROOT)
+        manifest = self.user_skills_home / "skills" / "wise-owl" / ".wise-owl-install.json"
+        manifest.unlink()
+        errors = self.installer.check_install("user", self.root, self.codex_home, self.user_skills_home)
+        self.assertTrue(any("missing managed install manifest" in error for error in errors), errors)
+
+    def test_check_cli_is_read_only_and_defaults_to_user_scope(self):
+        self.installer.install("user", self.root, self.codex_home, template_root=ROOT)
+        before = {path.relative_to(self.root): path.read_bytes() for path in self.root.rglob("*") if path.is_file()}
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "install.py"), "--check"],
+            cwd=self.root,
+            env={
+                "HOME": str(self.root / "home"),
+                "WISE_OWL_TEMPLATE_ROOT": str(ROOT),
+            },
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        after = {path.relative_to(self.root): path.read_bytes() for path in self.root.rglob("*") if path.is_file()}
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Wise Owl check passed for user scope.", result.stdout)
+        self.assertEqual(before, after)
+
+    def test_install_success_output_includes_next_steps(self):
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "install.py")],
+            cwd=self.root,
+            env={
+                "HOME": str(self.root / "home"),
+                "WISE_OWL_TEMPLATE_ROOT": str(ROOT),
+            },
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Wise Owl installed for user scope.", result.stdout)
+        self.assertIn("Restart or reopen Codex.", result.stdout)
+        self.assertIn("Use Wise Owl Standard to review this change.", result.stdout)
+        self.assertIn("--check", result.stdout)
+        self.assertNotIn("SKILL.md\n", result.stdout)
+
+    def test_managed_upgrade_replaces_unchanged_owned_files_without_force(self):
+        template = self.make_template()
+        self.installer.install("user", self.root, self.codex_home, template_root=template)
+        installed_skill = self.user_skills_home / "skills" / "wise-owl" / "SKILL.md"
+        updated = (template / ".agents" / "skills" / "wise-owl" / "SKILL.md").read_text() + "\nUpgrade marker.\n"
+        (template / ".agents" / "skills" / "wise-owl" / "SKILL.md").write_text(updated, encoding="utf-8")
+
+        self.installer.install("user", self.root, self.codex_home, template_root=template)
+
+        self.assertEqual(installed_skill.read_text(encoding="utf-8"), updated)
+        manifest = json.loads((installed_skill.parent / ".wise-owl-install.json").read_text(encoding="utf-8"))
+        self.assertEqual(manifest["schema_version"], 1)
+        self.assertIn("skill/SKILL.md", manifest["files"])
+
+    def test_managed_upgrade_refuses_modified_owned_files(self):
+        template = self.make_template()
+        self.installer.install("user", self.root, self.codex_home, template_root=template)
+        installed_skill = self.user_skills_home / "skills" / "wise-owl" / "SKILL.md"
+        installed_skill.write_text("local customization\n", encoding="utf-8")
+        source_skill = template / ".agents" / "skills" / "wise-owl" / "SKILL.md"
+        source_skill.write_text(source_skill.read_text(encoding="utf-8") + "\nUpgrade marker.\n", encoding="utf-8")
+
+        with self.assertRaisesRegex(FileExistsError, "locally modified managed files"):
+            self.installer.install("user", self.root, self.codex_home, template_root=template)
+
+        self.assertEqual(installed_skill.read_text(encoding="utf-8"), "local customization\n")
+
+    def test_managed_upgrade_removes_stale_unchanged_owned_files(self):
+        template = self.make_template()
+        stale_source = template / ".agents" / "skills" / "wise-owl" / "references" / "old-guide.md"
+        stale_source.write_text("old guide\n", encoding="utf-8")
+        self.installer.install("user", self.root, self.codex_home, template_root=template)
+        installed = self.user_skills_home / "skills" / "wise-owl" / "references" / "old-guide.md"
+        self.assertTrue(installed.exists())
+
+        stale_source.unlink()
+        self.installer.install("user", self.root, self.codex_home, template_root=template)
+
+        self.assertFalse(installed.exists())
+        manifest = json.loads((self.user_skills_home / "skills" / "wise-owl" / ".wise-owl-install.json").read_text())
+        self.assertNotIn("skill/references/old-guide.md", manifest["files"])
+
+    def test_managed_upgrade_refuses_to_orphan_modified_stale_files(self):
+        template = self.make_template()
+        stale_source = template / ".agents" / "skills" / "wise-owl" / "references" / "old-guide.md"
+        stale_source.write_text("old guide\n", encoding="utf-8")
+        self.installer.install("user", self.root, self.codex_home, template_root=template)
+        installed = self.user_skills_home / "skills" / "wise-owl" / "references" / "old-guide.md"
+        installed.write_text("local guide\n", encoding="utf-8")
+        stale_source.unlink()
+
+        with self.assertRaisesRegex(FileExistsError, "locally modified managed files"):
+            self.installer.install("user", self.root, self.codex_home, template_root=template)
+
+        self.assertEqual(installed.read_text(encoding="utf-8"), "local guide\n")
+
+    def test_installed_script_reinstall_preserves_package_version(self):
+        self.installer.install("user", self.root, self.codex_home, template_root=ROOT)
+        installed_script = self.user_skills_home / "skills" / "wise-owl" / "scripts" / "wise_owl_install.py"
+        result = subprocess.run(
+            [sys.executable, str(installed_script), "--scope", "user"],
+            cwd=self.root,
+            env={
+                "HOME": str(self.root / "home"),
+                "WISE_OWL_REPO_ROOT": str(self.root / "repo"),
+                "WISE_OWL_CODEX_HOME": str(self.codex_home),
+                "WISE_OWL_USER_SKILLS_HOME": str(self.user_skills_home),
+            },
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        manifest = json.loads((installed_script.parents[1] / ".wise-owl-install.json").read_text())
+        self.assertEqual(manifest["package_version"], "0.2.0")
+
+    def test_uninstall_removes_owned_files_and_preserves_shared_config(self):
+        self.installer.install("user", self.root, self.codex_home, template_root=ROOT)
+        config = self.codex_home / "config.toml"
+
+        removed, preserved = self.installer.uninstall(
+            "user",
+            self.root,
+            self.codex_home,
+            self.user_skills_home,
+        )
+
+        self.assertTrue(removed)
+        self.assertEqual(preserved, [])
+        self.assertFalse((self.user_skills_home / "skills" / "wise-owl").exists())
+        self.assertFalse((self.codex_home / "agents" / "logic_owl.toml").exists())
+        self.assertTrue(config.exists())
+
+    def test_uninstall_preserves_locally_modified_owned_files(self):
+        self.installer.install("user", self.root, self.codex_home, template_root=ROOT)
+        agent = self.codex_home / "agents" / "logic_owl.toml"
+        agent.write_text(agent.read_text(encoding="utf-8") + "# local\n", encoding="utf-8")
+
+        removed, preserved = self.installer.uninstall(
+            "user",
+            self.root,
+            self.codex_home,
+            self.user_skills_home,
+        )
+
+        self.assertTrue(removed)
+        self.assertEqual(preserved, [agent])
+        self.assertTrue(agent.exists())
+        manifest = self.user_skills_home / "skills" / "wise-owl" / ".wise-owl-install.json"
+        self.assertTrue(manifest.exists())
+
+    def test_uninstall_without_manifest_refuses_guessing_ownership(self):
+        with self.assertRaisesRegex(FileNotFoundError, "managed install manifest"):
+            self.installer.uninstall("user", self.root, self.codex_home, self.user_skills_home)
+
+    def test_check_and_uninstall_reject_symlinked_manifest(self):
+        self.installer.install("user", self.root, self.codex_home, template_root=ROOT)
+        skill_dir = self.user_skills_home / "skills" / "wise-owl"
+        manifest = skill_dir / ".wise-owl-install.json"
+        original = manifest.read_text(encoding="utf-8")
+        outside = self.root / "outside-manifest.json"
+        outside.write_text(original, encoding="utf-8")
+        manifest.unlink()
+        try:
+            manifest.symlink_to(outside)
+        except OSError as exc:
+            self.skipTest(f"symlinks unavailable: {exc}")
+
+        agent = self.codex_home / "agents" / "logic_owl.toml"
+        agent.write_text(agent.read_text(encoding="utf-8") + "# local\n", encoding="utf-8")
+
+        errors = self.installer.check_install("user", self.root, self.codex_home, self.user_skills_home)
+        self.assertTrue(any("manifest must not be a symlink" in error for error in errors), errors)
+        with self.assertRaisesRegex(ValueError, "symlink write target"):
+            self.installer.uninstall("user", self.root, self.codex_home, self.user_skills_home)
+
+        self.assertEqual(outside.read_text(encoding="utf-8"), original)
+        self.assertTrue(agent.exists())
+
+    def test_check_and_uninstall_reject_skill_directory_escape(self):
+        self.installer.install("user", self.root, self.codex_home, template_root=ROOT)
+        skill_dir = self.user_skills_home / "skills" / "wise-owl"
+        outside = self.root / "outside-skill"
+        skill_dir.rename(outside)
+        try:
+            skill_dir.symlink_to(outside, target_is_directory=True)
+        except OSError as exc:
+            self.skipTest(f"symlinks unavailable: {exc}")
+
+        errors = self.installer.check_install("user", self.root, self.codex_home, self.user_skills_home)
+        self.assertTrue(any("outside install roots" in error for error in errors), errors)
+        with self.assertRaisesRegex(ValueError, "outside install roots"):
+            self.installer.uninstall("user", self.root, self.codex_home, self.user_skills_home)
+
+        self.assertTrue((outside / "SKILL.md").exists())
+        self.assertTrue((self.codex_home / "agents" / "logic_owl.toml").exists())
+
+    def test_public_uninstall_cli_removes_clean_install(self):
+        self.installer.install("user", self.root, self.codex_home, template_root=ROOT)
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "install.py"), "--uninstall"],
+            cwd=self.root,
+            env={
+                "HOME": str(self.root / "home"),
+                "WISE_OWL_REPO_ROOT": str(self.root / "repo"),
+                "WISE_OWL_CODEX_HOME": str(self.codex_home),
+                "WISE_OWL_USER_SKILLS_HOME": str(self.user_skills_home),
+                "WISE_OWL_TEMPLATE_ROOT": str(ROOT),
+            },
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Removed", result.stdout)
+        self.assertIn("Shared config.toml and AGENTS.md entries were left unchanged.", result.stdout)
+        self.assertFalse((self.user_skills_home / "skills" / "wise-owl").exists())
+        self.assertTrue((self.codex_home / "config.toml").exists())
+
+    def test_public_uninstall_cli_reports_preserved_modified_file(self):
+        self.installer.install("user", self.root, self.codex_home, template_root=ROOT)
+        agent = self.codex_home / "agents" / "logic_owl.toml"
+        agent.write_text(agent.read_text(encoding="utf-8") + "# local\n", encoding="utf-8")
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "install.py"), "--uninstall"],
+            cwd=self.root,
+            env={
+                "HOME": str(self.root / "home"),
+                "WISE_OWL_REPO_ROOT": str(self.root / "repo"),
+                "WISE_OWL_CODEX_HOME": str(self.codex_home),
+                "WISE_OWL_USER_SKILLS_HOME": str(self.user_skills_home),
+                "WISE_OWL_TEMPLATE_ROOT": str(ROOT),
+            },
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("Preserved locally modified files", result.stderr)
+        self.assertIn(str(agent), result.stderr)
+        self.assertTrue(agent.exists())
+
+    def test_install_rejects_symlinked_shared_config_target(self):
+        config = self.root / ".codex" / "config.toml"
+        config.parent.mkdir(parents=True)
+        outside = self.root / "outside-config.toml"
+        outside.write_text('[outside]\nvalue = "untouched"\n', encoding="utf-8")
+        try:
+            config.symlink_to(outside)
+        except OSError as exc:
+            self.skipTest(f"symlinks unavailable: {exc}")
+
+        with self.assertRaisesRegex(ValueError, "symlink write target"):
+            self.installer.install("repo", self.root, self.codex_home, template_root=ROOT)
+
+        self.assertEqual(outside.read_text(encoding="utf-8"), '[outside]\nvalue = "untouched"\n')
+        self.assertFalse((self.root / ".agents" / "skills" / "wise-owl" / "SKILL.md").exists())
+
+    def test_install_rejects_symlinked_managed_file_target(self):
+        skill = self.root / ".agents" / "skills" / "wise-owl" / "SKILL.md"
+        skill.parent.mkdir(parents=True)
+        outside = self.root / "outside-skill.md"
+        outside.write_text("untouched\n", encoding="utf-8")
+        try:
+            skill.symlink_to(outside)
+        except OSError as exc:
+            self.skipTest(f"symlinks unavailable: {exc}")
+
+        with self.assertRaisesRegex(ValueError, "symlink write target"):
+            self.installer.install("repo", self.root, self.codex_home, template_root=ROOT)
+
+        self.assertEqual(outside.read_text(encoding="utf-8"), "untouched\n")
 
     def test_generated_tomls_parse_with_tomllib_when_available(self):
         try:
@@ -223,10 +568,10 @@ class WiseOwlInstallTests(unittest.TestCase):
             "user",
             self.root,
             self.codex_home,
-            ROOT / "wise-owl-plugin",
             plugin_installer.DEFAULT_MODEL,
             plugin_installer.DEFAULT_PRIME_MODEL,
             False,
+            ROOT / "wise-owl-plugin",
         )
         plugin_installer.write_planned(dry_changed, dry_run=True, force=False)
         self.assertFalse((self.user_skills_home / "skills").exists())
@@ -236,16 +581,30 @@ class WiseOwlInstallTests(unittest.TestCase):
         self.assertTrue((self.user_skills_home / "skills" / "wise-owl" / "SKILL.md").exists())
         self.assertTrue((self.codex_home / "agents" / "prime_owl.toml").exists())
 
+    def test_plugin_full_install_writes_complete_skill_and_manifest(self):
+        plugin_installer = load_plugin_installer()
+        plugin_installer.install(
+            "user",
+            self.root,
+            self.codex_home,
+            user_skills_home=self.user_skills_home,
+            template_root=ROOT / "wise-owl-plugin",
+        )
+        skill = self.user_skills_home / "skills" / "wise-owl"
+        self.assertTrue((skill / "references" / "finding-schema.md").is_file())
+        self.assertTrue((skill / "scripts" / "wise_owl_validate_packet.py").is_file())
+        self.assertTrue((skill / ".wise-owl-install.json").is_file())
+
     def test_plugin_conflict_preflight_writes_nothing(self):
         plugin_installer = load_plugin_installer()
         planned = plugin_installer.plan_install(
             "user",
             self.root,
             self.codex_home,
-            ROOT / "wise-owl-plugin",
             plugin_installer.DEFAULT_MODEL,
             plugin_installer.DEFAULT_PRIME_MODEL,
             False,
+            ROOT / "wise-owl-plugin",
         )
         config = self.codex_home / "config.toml"
         config.parent.mkdir(parents=True)
@@ -270,10 +629,10 @@ class WiseOwlInstallTests(unittest.TestCase):
             "user",
             self.root,
             self.codex_home,
-            ROOT / "wise-owl-plugin",
             plugin_installer.DEFAULT_MODEL,
             plugin_installer.DEFAULT_PRIME_MODEL,
             False,
+            ROOT / "wise-owl-plugin",
         )
         plugin_installer.write_planned(planned, dry_run=False, force=True)
         plugin_installer.handle_legacy_agents(self.codex_home / "agents", dry_run=False, force=True)
@@ -361,6 +720,26 @@ class WiseOwlInstallTests(unittest.TestCase):
         self.assertIn('"No Wise Owl accepted findings remain."', prime)
         self.assertIn("do not return role", prime)
         self.assertIn("do not omit accepted_findings, rejected_findings, or builder_instructions", prime)
+
+    def test_agent_tomls_document_exact_non_pass_packets(self):
+        expected_categories = {
+            "logic_owl.toml": "correctness",
+            "guardian_owl.toml": "security",
+            "proof_owl.toml": "testability",
+        }
+        for filename, category in expected_categories.items():
+            content = (ROOT / ".codex" / "agents" / filename).read_text()
+            self.assertIn("For any finding packet, use exactly this shape:", content)
+            self.assertIn('"evidence": "one non-empty string"', content)
+            self.assertIn(f'"category": "{category}"', content)
+            self.assertIn("Allowed categories: correctness, security, testability, maintainability, scope, ci", content)
+            self.assertIn("Do not return evidence as an array", content)
+
+        prime = (ROOT / ".codex" / "agents" / "prime_owl.toml").read_text()
+        self.assertIn("If accepted findings remain, use exactly this shape:", prime)
+        self.assertIn('"required_builder_action": "minimal action"', prime)
+        self.assertIn("Allowed categories: correctness, security, testability, maintainability, scope, ci", prime)
+        self.assertIn("Do not use required_fix", prime)
 
     def test_installer_warns_for_legacy_agent_files(self):
         legacy = self.root / ".codex" / "agents" / "owl_guard.toml"
@@ -460,6 +839,9 @@ class WiseOwlInstallTests(unittest.TestCase):
         self.assertIn("MIT licensed", readme)
         self.assertIn("Install In 60 Seconds", readme)
         self.assertIn("python3 install.py --dry-run", readme)
+        self.assertIn("python3 install.py --check", readme)
+        self.assertIn("python3 install.py --uninstall", readme)
+        self.assertIn("Python 3.10+", readme)
         self.assertIn("assets/wise-owl-logo-transparent.png", readme)
         self.assertIn("assets/wise-owl-workflow.png", readme)
         self.assertIn("assets/wise-owl-install.png", readme)
@@ -470,6 +852,13 @@ class WiseOwlInstallTests(unittest.TestCase):
         self.assertIn("docs/demo-transcript.md", readme)
         self.assertNotIn("Packaging Checks", readme)
         self.assertNotIn("Known Limitations", readme)
+        self.assertIn("--mode standard", docs)
+        self.assertIn("pass only when `findings` is empty", docs)
+        self.assertIn("managed install manifest", packaging)
+        self.assertIn("python3 install.py --check", packaging)
+        self.assertIn("python3 install.py --uninstall", packaging)
+        self.assertIn("python3 scripts/sync_plugin_assets.py --check", packaging)
+        self.assertIn("python3 scripts/verify_release.py", packaging)
 
     def test_plugin_manifest_references_packaged_logo(self):
         import json

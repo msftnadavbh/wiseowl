@@ -1,5 +1,7 @@
 import copy
+import importlib.util
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -14,7 +16,7 @@ FIXTURES = ROOT / "tests" / "fixtures"
 
 VALID_CRITIC = {
     "role": "logic_owl",
-    "verdict": "concerns",
+    "verdict": "blocked",
     "findings": [
         {
             "id": "E1",
@@ -79,7 +81,7 @@ class ValidatePacketTest(unittest.TestCase):
         finally:
             packet_path.unlink(missing_ok=True)
 
-    def run_prime_with_critics(self, prime_packet, critic_packets):
+    def run_prime_with_critics(self, prime_packet, critic_packets, mode=None):
         paths = []
         try:
             for packet in [prime_packet, *critic_packets]:
@@ -87,8 +89,13 @@ class ValidatePacketTest(unittest.TestCase):
                 with handle:
                     json.dump(packet, handle)
                     paths.append(Path(handle.name))
+            command = [sys.executable, str(SCRIPT), "--type", "prime", "--file", str(paths[0])]
+            if paths[1:]:
+                command.extend(["--critics", *map(str, paths[1:])])
+            if mode:
+                command.extend(["--mode", mode])
             return subprocess.run(
-                [sys.executable, str(SCRIPT), "--type", "prime", "--file", str(paths[0]), "--critics", *map(str, paths[1:])],
+                command,
                 cwd=ROOT,
                 text=True,
                 capture_output=True,
@@ -146,6 +153,34 @@ class ValidatePacketTest(unittest.TestCase):
                 )
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn("notes", result.stderr)
+
+    def test_critic_verdict_must_match_finding_severities(self):
+        cases = (
+            ("critic_invalid_pass_with_findings.json", "expected 'concerns'"),
+            ("critic_invalid_concerns_empty.json", "expected 'pass'"),
+            ("critic_invalid_blocked_without_blocking.json", "expected 'concerns'"),
+        )
+        for packet_name, expected_error in cases:
+            with self.subTest(packet_name=packet_name):
+                result = subprocess.run(
+                    [sys.executable, str(SCRIPT), "--type", "critic", "--file", str(FIXTURES / packet_name)],
+                    cwd=ROOT,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(expected_error, result.stderr)
+
+    def test_critic_blocked_with_blocking_finding_passes(self):
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT), "--type", "critic", "--file", str(FIXTURES / "critic_valid_blocked.json")],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_critic_missing_evidence_fails(self):
         packet = copy.deepcopy(VALID_CRITIC)
@@ -432,6 +467,90 @@ class ValidatePacketTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn("Source accounting was not checked", result.stdout)
 
+    def test_prime_with_duplicate_critic_roles_fails(self):
+        packet = copy.deepcopy(VALID_PRIME)
+        packet["rejected_findings"] = []
+        result = self.run_prime_with_critics(packet, [VALID_CRITIC, copy.deepcopy(VALID_CRITIC)])
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("duplicate critic role 'logic_owl'", result.stderr)
+
+    def test_standard_mode_requires_logic_and_proof(self):
+        packet = copy.deepcopy(VALID_PRIME)
+        packet["rejected_findings"] = []
+        result = self.run_prime_with_critics(packet, [VALID_CRITIC], mode="standard")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("mode standard: missing critic roles proof_owl", result.stderr)
+
+    def test_standard_mode_accepts_exact_reviewer_set(self):
+        logic = copy.deepcopy(VALID_CRITIC)
+        proof = copy.deepcopy(VALID_CRITIC)
+        proof["role"] = "proof_owl"
+        proof["findings"][0]["id"] = "P1"
+        packet = copy.deepcopy(VALID_PRIME)
+        packet["rejected_findings"] = [
+            {
+                "source_ids": ["proof_owl:P1"],
+                "reason": "low_value",
+                "explanation": "The finding is valid but not useful for this change.",
+            }
+        ]
+        result = self.run_prime_with_critics(packet, [logic, proof], mode="standard")
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_lite_mode_rejects_critic_packets(self):
+        packet = prime_packet("pass", [])
+        result = self.run_prime_with_critics(packet, [VALID_CRITIC], mode="lite")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("mode lite: unexpected critic roles logic_owl", result.stderr)
+
+    def test_security_mode_accepts_guardian_only(self):
+        guardian = copy.deepcopy(VALID_CRITIC)
+        guardian["role"] = "guardian_owl"
+        result = self.run_prime_with_critics(prime_packet("pass", []), [{**guardian, "verdict": "pass", "findings": [], "notes": ["No meaningful issues found."]}], mode="security")
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_security_mode_rejects_extra_logic_role(self):
+        logic = {"role": "logic_owl", "verdict": "pass", "findings": [], "notes": ["No meaningful issues found."]}
+        guardian = {"role": "guardian_owl", "verdict": "pass", "findings": [], "notes": ["No meaningful issues found."]}
+        result = self.run_prime_with_critics(prime_packet("pass", []), [guardian, logic], mode="security")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("mode security: unexpected critic roles logic_owl", result.stderr)
+
+    def test_full_mode_rejects_missing_guardian(self):
+        logic = {"role": "logic_owl", "verdict": "pass", "findings": [], "notes": ["No meaningful issues found."]}
+        proof = {"role": "proof_owl", "verdict": "pass", "findings": [], "notes": ["No meaningful issues found."]}
+        result = self.run_prime_with_critics(prime_packet("pass", []), [logic, proof], mode="full")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("mode full: missing critic roles guardian_owl", result.stderr)
+
+    def test_full_mode_rejects_duplicate_role(self):
+        logic = {"role": "logic_owl", "verdict": "pass", "findings": [], "notes": ["No meaningful issues found."]}
+        guardian = {"role": "guardian_owl", "verdict": "pass", "findings": [], "notes": ["No meaningful issues found."]}
+        proof = {"role": "proof_owl", "verdict": "pass", "findings": [], "notes": ["No meaningful issues found."]}
+        result = self.run_prime_with_critics(prime_packet("pass", []), [logic, copy.deepcopy(logic), guardian, proof], mode="full")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("duplicate critic role 'logic_owl'", result.stderr)
+
+    def test_mode_can_only_be_used_with_prime_packets(self):
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT),
+                "--type",
+                "critic",
+                "--file",
+                str(FIXTURES / "critic_valid_logic_pass.json"),
+                "--mode",
+                "standard",
+            ],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("--mode can only be used with --type prime", result.stderr)
+
     def test_fixture_packets_validate_as_documented(self):
         cases = [
             ("critic", "critic_guardian_owl_privacy.json", [], 0),
@@ -444,6 +563,10 @@ class ValidatePacketTest(unittest.TestCase):
             ("critic", "critic_invalid_pass_null_note.json", [], 1),
             ("critic", "critic_invalid_pass_blank_note.json", [], 1),
             ("critic", "critic_invalid_pass_non_string_note.json", [], 1),
+            ("critic", "critic_invalid_pass_with_findings.json", [], 1),
+            ("critic", "critic_invalid_concerns_empty.json", [], 1),
+            ("critic", "critic_invalid_blocked_without_blocking.json", [], 1),
+            ("critic", "critic_valid_blocked.json", [], 0),
             ("prime", "prime_pass.json", [], 0),
             ("prime", "prime_valid_pass_empty.json", [], 0),
             ("prime", "prime_invalid_pass_missing_required_fields.json", [], 1),
@@ -503,6 +626,22 @@ class ValidatePacketTest(unittest.TestCase):
         good_source_sets = [set(finding["source_ids"]) for finding in good["accepted_findings"]]
         self.assertIn({"guardian_owl:G-001"}, good_source_sets)
         self.assertIn({"proof_owl:P-003", "logic_owl:L-003"}, good_source_sets)
+
+    def test_demo_transcript_packets_validate(self):
+        transcript = (ROOT / "docs" / "demo-transcript.md").read_text(encoding="utf-8")
+        packets = [json.loads(block) for block in re.findall(r"```json\n(.*?)\n```", transcript, re.DOTALL)]
+        self.assertEqual(len(packets), 3)
+
+        spec = importlib.util.spec_from_file_location("demo_packet_validator", SCRIPT)
+        validator = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(validator)
+        critics = packets[:2]
+        for packet in critics:
+            self.assertEqual(validator.validate_critic(packet), [])
+        self.assertEqual(
+            validator.validate_prime(packets[2], critics, validator.MODE_ROLES["standard"], "standard"),
+            [],
+        )
 
 
 if __name__ == "__main__":

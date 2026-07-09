@@ -10,9 +10,6 @@
       <stop offset="0" stop-color="#f6b23d"/>
       <stop offset="1" stop-color="#ffcf6b"/>
     </linearGradient>
-    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#031021" flood-opacity="0.28"/>
-    </filter>
     <style>
       .title { font: 800 54px ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #f8fbff; }
       .sub { font: 500 22px ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #b8d6e8; }
@@ -33,18 +30,18 @@
   <text x="72" y="84" class="title">Wise Owl turns review noise into one decision</text>
   <text x="76" y="124" class="sub">Read-only Codex reviewers check the risky parts, then Prime Owl gives the builder a clean action list.</text>
 
-  <g filter="url(#shadow)">
+  <g>
     <rect x="74" y="168" width="510" height="402" rx="22" fill="#07172e" stroke="#244769" stroke-width="1.5"/>
     <rect x="74" y="168" width="510" height="54" rx="22" fill="#0d2948"/>
     <circle cx="108" cy="195" r="7" fill="#ff6b6b"/>
     <circle cx="132" cy="195" r="7" fill="#ffd166"/>
     <circle cx="156" cy="195" r="7" fill="#67d391"/>
     <text x="96" y="260" class="code-dim">$ codex</text>
-    <text x="96" y="304" class="code">Use Wise Owl Standard</text>
+    <text x="96" y="304" class="code">Use Wise Owl Full Council</text>
     <text x="96" y="334" class="code">to review this patch.</text>
     <text x="96" y="392" class="code-dim">Selected reviewers</text>
     <text x="96" y="432" class="code">Logic Owl   Proof Owl</text>
-    <text x="96" y="462" class="code">then Prime Owl</text>
+    <text x="96" y="462" class="code">Guardian Owl, then Prime Owl</text>
     <text x="96" y="522" class="code-dim">No background service. No API client.</text>
   </g>
 
@@ -52,7 +49,7 @@
   <path d="M604 366 C650 366 660 366 700 366" fill="none" stroke="#7cc9e6" stroke-width="5" stroke-linecap="round"/>
   <path d="M604 366 C646 366 656 440 700 440" fill="none" stroke="#7cc9e6" stroke-width="5" stroke-linecap="round"/>
 
-  <g filter="url(#shadow)">
+  <g>
     <rect x="704" y="244" width="208" height="94" rx="18" class="panel"/>
     <text x="730" y="282" class="label">Logic Owl</text>
     <text x="730" y="312" class="small">Correctness</text>
@@ -70,7 +67,7 @@
   <path d="M930 398 C970 398 986 374 1026 374" fill="none" stroke="#f7bd4f" stroke-width="5" stroke-linecap="round"/>
   <path d="M930 506 C976 506 984 394 1026 394" fill="none" stroke="#f7bd4f" stroke-width="5" stroke-linecap="round"/>
 
-  <g filter="url(#shadow)">
+  <g>
     <rect x="1020" y="282" width="184" height="184" rx="24" fill="url(#gold)"/>
     <text x="1052" y="333" class="label">Prime Owl</text>
     <text x="1052" y="366" class="small" fill="#1a2d3e">Deduplicate</text>
@@ -78,7 +75,7 @@
     <text x="1052" y="426" class="small" fill="#1a2d3e">Rank fixes</text>
   </g>
 
-  <g filter="url(#shadow)">
+  <g>
     <rect x="704" y="590" width="500" height="72" rx="18" class="card"/>
     <circle cx="742" cy="626" r="14" fill="#32c48d"/>
     <path d="M735 626 l5 6 l11 -14" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>

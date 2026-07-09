@@ -1,0 +1,17 @@
+{
+  "role": "guardian_owl",
+  "verdict": "blocked",
+  "findings": [
+    {
+      "id": "G-BLOCK-001",
+      "severity": "non_blocking",
+      "category": "security",
+      "issue": "The verdict claims a block without a blocking finding.",
+      "evidence": "The only finding is marked non_blocking.",
+      "impact": "The builder cannot infer the intended gate.",
+      "suggested_fix": "Use concerns or provide evidence for blocking severity.",
+      "confidence": "high"
+    }
+  ],
+  "notes": []
+}

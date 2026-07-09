@@ -105,7 +105,7 @@ const scenes = [
       "selected_reviewers: logic_owl, proof_owl, prime_owl",
       "prime_owl_verdict: caution",
       "checks: git status, git diff, rg --files",
-      "execution_note: schema issues were reported, not hidden.",
+      "packet_validation: critic and Prime packets valid.",
     ],
     cards: [
       ["Status", "complete"],
