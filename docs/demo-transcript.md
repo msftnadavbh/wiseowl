@@ -1,8 +1,8 @@
 # Wise Owl CLI Demo Transcript
 
-This transcript backs `assets/wise-owl-cli-demo.gif`.
+This file records the source excerpt used for `assets/wise-owl-cli-demo.gif`.
 
-The GIF is a visual replay from a real Codex CLI run in a disposable demo repo. Timing is compressed for README readability, and local plugin/auth warning noise was removed. The replay is honest about the result: Wise Owl is a Codex skill + custom-agent workflow, not a daemon, hosted service, runtime framework, custom orchestrator, or direct model API client.
+The GIF is an animated walkthrough based on a real Codex CLI run in a disposable demo repo. Non-Wise-Owl local setup warnings were omitted from the animation so the README can focus on the workflow. Wise Owl remains a Codex skill + custom-agent workflow, not a daemon, hosted service, runtime framework, custom orchestrator, or direct model API client.
 
 ## Command Shape
 
@@ -29,7 +29,7 @@ execution_note: critic packets were schema-malformed, and one accidental early P
 
 ## Replay Notes
 
-- The GIF compresses the flow into a short visual summary.
+- The GIF presents the flow as a short visual summary.
 - The real run used a read-only sandbox and did not mutate the Wise Owl repo.
-- Local warnings unrelated to Wise Owl were omitted from the visual replay.
+- Local setup warnings unrelated to Wise Owl were omitted from the README animation.
 - The source run surfaced execution issues, which is useful: Wise Owl should report malformed or partial review packets instead of hiding them.

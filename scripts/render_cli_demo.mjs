@@ -56,7 +56,7 @@ const scenes = [
       ["Sandbox", "read-only"],
       ["Scope", "docs diff"],
     ],
-    hold: 6,
+    hold: 10,
   },
   {
     stage: "2. Critics",
@@ -75,7 +75,7 @@ const scenes = [
       ["Proof Owl", "reviewing"],
       ["Prime Owl", "waiting"],
     ],
-    hold: 7,
+    hold: 11,
   },
   {
     stage: "3. Prime",
@@ -93,7 +93,7 @@ const scenes = [
       ["Accepted", "1"],
       ["Blocking", "0"],
     ],
-    hold: 8,
+    hold: 12,
   },
   {
     stage: "4. Final",
@@ -112,7 +112,7 @@ const scenes = [
       ["Checks", "listed"],
       ["Next", "finalize"],
     ],
-    hold: 10,
+    hold: 15,
   },
 ];
 
@@ -306,7 +306,7 @@ function renderHtml(scene, index, total, logoDataUri) {
         <div class="cards">${cards}</div>
       </div>
       <div class="foot">
-        Replay from a real Codex CLI transcript. Timing compressed. Local warning noise removed.
+        Based on a real Codex CLI run. Flow edited for clarity.
         <div class="progress"><div class="fill"></div></div>
       </div>
     </section>
@@ -344,7 +344,7 @@ async function main() {
   const input = path.join(frameDir, "frame-%03d.png");
   const paletteResult = spawnSync(
     "ffmpeg",
-    ["-y", "-framerate", "7", "-i", input, "-vf", "palettegen=stats_mode=diff", "-frames:v", "1", "-update", "1", palette],
+    ["-y", "-framerate", "4", "-i", input, "-vf", "palettegen=stats_mode=diff", "-frames:v", "1", "-update", "1", palette],
     { stdio: "inherit" },
   );
   if (paletteResult.status !== 0) {
@@ -356,7 +356,7 @@ async function main() {
     [
       "-y",
       "-framerate",
-      "7",
+      "4",
       "-i",
       input,
       "-i",
