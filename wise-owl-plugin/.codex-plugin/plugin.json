@@ -1,0 +1,20 @@
+{
+  "name": "wise-owl",
+  "version": "0.1.0",
+  "description": "Read-only multi-agent second-opinion review workflow for Codex.",
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Wise Owl",
+    "shortDescription": "Multi-agent second opinion for Codex plans, diffs, security, and tests.",
+    "longDescription": "Wise Owl packages three read-only critic agents and a Prime Owl judge into a reusable review workflow for high-risk Codex changes.",
+    "developerName": "Local",
+    "category": "Productivity",
+    "capabilities": ["Read"],
+    "logo": "./assets/wise-owl-logo.png",
+    "composerIcon": "./assets/wise-owl-logo.png",
+    "defaultPrompt": [
+      "Use Wise Owl to review this plan before implementation.",
+      "Use Wise Owl to review the final diff and tests before finalizing."
+    ]
+  }
+}

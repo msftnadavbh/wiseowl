@@ -1,0 +1,16 @@
+{
+  "verdict": "caution",
+  "accepted_findings": [
+    {
+      "source_ids": ["proof_owl:P-CI-001"],
+      "severity": "non_blocking",
+      "category": "testability",
+      "issue": "The audit snapshot needs a reproducible command.",
+      "evidence": "proof_owl:P-CI-001 cites a clean audit claim without command output.",
+      "impact": "The confidence claim is weaker but does not block the requested plan.",
+      "required_builder_action": "Name the exact audit command and dirty-baseline caveat."
+    }
+  ],
+  "rejected_findings": [],
+  "builder_instructions": ["Revise the plan with the reproducible check note."]
+}

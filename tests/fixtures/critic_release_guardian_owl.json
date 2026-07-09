@@ -1,0 +1,37 @@
+{
+  "role": "guardian_owl",
+  "verdict": "blocked",
+  "findings": [
+    {
+      "id": "G-001",
+      "severity": "blocking",
+      "category": "security",
+      "issue": "User-local install docs must not make --force the default first path.",
+      "evidence": "The Review Packet cites packaging docs that previously recommended --force for user-local install.",
+      "impact": "Users could overwrite or migrate files without reviewing target paths.",
+      "suggested_fix": "Document dry-run and non-force install first; reserve --force for reviewed overwrite or legacy migration.",
+      "confidence": "high"
+    },
+    {
+      "id": "G-002",
+      "severity": "non_blocking",
+      "category": "security",
+      "issue": "Environment root overrides should be treated as advanced install behavior.",
+      "evidence": "The installer supports WISE_OWL_CODEX_HOME for tests and unusual layouts.",
+      "impact": "Ambient environment values could surprise users if not documented.",
+      "suggested_fix": "Tell users to dry-run before non-dry-run installs with custom roots.",
+      "confidence": "medium"
+    },
+    {
+      "id": "G-003",
+      "severity": "suggestion",
+      "category": "security",
+      "issue": "Legacy file cleanup should stay explicit.",
+      "evidence": "The installer removes owl_* TOMLs only with --force.",
+      "impact": "Explicit migration avoids deleting unrelated files.",
+      "suggested_fix": "Keep legacy cleanup documented as --force-only behavior.",
+      "confidence": "medium"
+    }
+  ],
+  "notes": []
+}

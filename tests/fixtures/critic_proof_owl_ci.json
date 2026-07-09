@@ -1,0 +1,17 @@
+{
+  "role": "proof_owl",
+  "verdict": "concerns",
+  "findings": [
+    {
+      "id": "P-CI-001",
+      "severity": "non_blocking",
+      "category": "testability",
+      "issue": "The plan claims a clean security snapshot without naming the exact command.",
+      "evidence": "The review notes say dependency audit is clean but do not include the command or output.",
+      "impact": "The builder cannot reproduce the confidence claim.",
+      "suggested_fix": "Record the exact audit command and dirty-baseline caveat.",
+      "confidence": "high"
+    }
+  ],
+  "notes": []
+}

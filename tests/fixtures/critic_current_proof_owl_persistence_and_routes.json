@@ -1,0 +1,47 @@
+{
+  "role": "proof_owl",
+  "verdict": "blocked",
+  "findings": [
+    {
+      "id": "P-privacy-persistence-tests",
+      "severity": "blocking",
+      "category": "testability",
+      "issue": "There is no negative regression test proving protected data is not persisted in localStorage by default.",
+      "evidence": "The Review Packet lists localStorage template persistence but no test rejecting sensitive attendance/follow-up data persistence.",
+      "impact": "A future change could silently persist protected data in the browser.",
+      "suggested_fix": "Add a negative test that sensitive fields are excluded from saved templates by default.",
+      "confidence": "high"
+    },
+    {
+      "id": "P-announcement-regression-specificity",
+      "severity": "non_blocking",
+      "category": "testability",
+      "issue": "Announcement regression assertions are too broad.",
+      "evidence": "The test summary mentions announcement flow coverage but not explicit announcementSent/status assertions.",
+      "impact": "A status regression could pass if only generic UI text is checked.",
+      "suggested_fix": "Assert announcementSent and status transitions explicitly.",
+      "confidence": "medium"
+    },
+    {
+      "id": "P-browser-checks-not-assertive",
+      "severity": "non_blocking",
+      "category": "ci",
+      "issue": "Browser checks are not tied to assertion-bearing CI commands.",
+      "evidence": "The Review Packet lists manual browser validation but not the CI command that enforces it.",
+      "impact": "The check can be missed during repeatable validation.",
+      "suggested_fix": "Name the exact assertion-bearing command or add one.",
+      "confidence": "medium"
+    },
+    {
+      "id": "P-api-route-test-gap",
+      "severity": "non_blocking",
+      "category": "testability",
+      "issue": "Route-level PATCH semantics and rejected fields are not covered.",
+      "evidence": "The Review Packet lists PATCH route behavior but no test for rejected fields.",
+      "impact": "Unexpected writable fields could slip into the API.",
+      "suggested_fix": "Add route-level tests for accepted and rejected PATCH fields.",
+      "confidence": "medium"
+    }
+  ],
+  "notes": []
+}

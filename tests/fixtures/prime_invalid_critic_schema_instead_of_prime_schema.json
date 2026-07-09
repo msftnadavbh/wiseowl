@@ -1,0 +1,17 @@
+{
+  "role": "prime_owl",
+  "verdict": "concerns",
+  "findings": [
+    {
+      "id": "P-001",
+      "severity": "blocking",
+      "category": "correctness",
+      "issue": "Prime Owl returned a critic-style packet.",
+      "evidence": "The packet has findings instead of accepted_findings.",
+      "impact": "The builder cannot account for source_ids.",
+      "suggested_fix": "Return the Prime Owl schema.",
+      "confidence": "high"
+    }
+  ],
+  "notes": ["This fixture must fail Prime validation."]
+}

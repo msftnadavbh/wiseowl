@@ -1,0 +1,37 @@
+{
+  "role": "logic_owl",
+  "verdict": "concerns",
+  "findings": [
+    {
+      "id": "L-001",
+      "severity": "non_blocking",
+      "category": "correctness",
+      "issue": "Installer preflight behavior should be described next to overwrite behavior.",
+      "evidence": "The release Review Packet lists installer preflight as a packaging-readiness requirement.",
+      "impact": "External users may not understand why a non-force install fails before writing.",
+      "suggested_fix": "Document conflict preflight in packaging docs.",
+      "confidence": "medium"
+    },
+    {
+      "id": "L-002",
+      "severity": "suggestion",
+      "category": "maintainability",
+      "issue": "Model override examples should name both reviewer and Prime Owl flags.",
+      "evidence": "The Review Packet says model defaults are configurable through installer flags.",
+      "impact": "Users may miss the Prime-specific override.",
+      "suggested_fix": "Show --model and --prime-model together.",
+      "confidence": "medium"
+    },
+    {
+      "id": "L-003",
+      "severity": "non_blocking",
+      "category": "maintainability",
+      "issue": "Release checklist text needs to match the selected MIT license.",
+      "evidence": "The release checklist is part of external packaging docs.",
+      "impact": "Contradictory release notes reduce trust.",
+      "suggested_fix": "Confirm the checklist no longer says the license is unchosen.",
+      "confidence": "high"
+    }
+  ],
+  "notes": []
+}

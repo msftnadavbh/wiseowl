@@ -1,0 +1,37 @@
+{
+  "role": "guardian_owl",
+  "verdict": "blocked",
+  "findings": [
+    {
+      "id": "G-001",
+      "severity": "blocking",
+      "category": "security",
+      "issue": "Changed API routes may expose sensitive operational data without explicit auth coverage.",
+      "evidence": "The review packet lists PATCH /api/followups and no middleware or route-level auth proof.",
+      "impact": "Sensitive operational data could be read or changed by an unauthenticated caller.",
+      "suggested_fix": "Add explicit auth/middleware coverage and a negative route test.",
+      "confidence": "high"
+    },
+    {
+      "id": "G-002",
+      "severity": "non_blocking",
+      "category": "security",
+      "issue": "Per-send AI opt-in is not persistent across sessions.",
+      "evidence": "The Review Packet says OpenRouter send requires a per-send checkbox and no saved preference.",
+      "impact": "Users may need to re-confirm, but protected data is not sent by default.",
+      "suggested_fix": "Document the per-send opt-in behavior.",
+      "confidence": "medium"
+    },
+    {
+      "id": "G-003",
+      "severity": "non_blocking",
+      "category": "security",
+      "issue": "Saved browser templates could include sensitive placeholders.",
+      "evidence": "The Review Packet says templates are stored in localStorage.",
+      "impact": "If templates include real protected data, the browser could persist it longer than intended.",
+      "suggested_fix": "Keep saved templates to non-sensitive placeholders or add a warning.",
+      "confidence": "medium"
+    }
+  ],
+  "notes": []
+}

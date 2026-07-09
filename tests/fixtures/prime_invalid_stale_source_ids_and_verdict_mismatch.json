@@ -1,0 +1,34 @@
+{
+  "verdict": "fix_required",
+  "accepted_findings": [
+    {
+      "source_ids": ["owl_guard:OG1"],
+      "severity": "non_blocking",
+      "category": "security",
+      "issue": "Old security finding from a previous run.",
+      "evidence": "Stale source ID from an older packet.",
+      "impact": "Prime Owl could act on the wrong review.",
+      "required_builder_action": "Do something vague."
+    },
+    {
+      "source_ids": ["guardian_owl:OG1"],
+      "severity": "suggestion",
+      "category": "security",
+      "issue": "Wrong current source ID.",
+      "evidence": "The current guardian packet uses G-001, G-002, and G-003.",
+      "impact": "The current blocking API auth finding is missed.",
+      "required_builder_action": "Consider reviewing auth."
+    },
+    {
+      "source_ids": ["Galileo:OP2"],
+      "severity": "non_blocking",
+      "category": "testability",
+      "issue": "Generated display name source ID.",
+      "evidence": "Generated names are not stable source IDs.",
+      "impact": "Accounting cannot prove which critic finding is covered.",
+      "required_builder_action": "Maybe add tests."
+    }
+  ],
+  "rejected_findings": [],
+  "builder_instructions": ["This intentionally mirrors stale Prime Owl output and must fail validation."]
+}

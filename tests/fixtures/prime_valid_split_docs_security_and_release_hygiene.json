@@ -1,0 +1,64 @@
+{
+  "verdict": "fix_required",
+  "accepted_findings": [
+    {
+      "source_ids": ["guardian_owl:G-001"],
+      "severity": "blocking",
+      "category": "security",
+      "issue": "User-local install docs must not make --force the default first path.",
+      "evidence": "guardian_owl:G-001 cites user-local docs that previously recommended --force by default.",
+      "impact": "Users could overwrite or migrate files without reviewing target paths.",
+      "required_builder_action": "Document dry-run and non-force install first; reserve --force for reviewed overwrite or legacy migration."
+    },
+    {
+      "source_ids": ["proof_owl:P-001"],
+      "severity": "non_blocking",
+      "category": "testability",
+      "issue": "Plugin installer preflight needs regression coverage.",
+      "evidence": "proof_owl:P-001 cites plugin installer preflight as a packaging blocker.",
+      "impact": "A plugin install conflict could partially write files if untested.",
+      "required_builder_action": "Add a plugin installer conflict preflight regression test."
+    },
+    {
+      "source_ids": ["proof_owl:P-003", "logic_owl:L-003"],
+      "severity": "non_blocking",
+      "category": "maintainability",
+      "issue": "Release checklist and license text must stay consistent.",
+      "evidence": "proof_owl:P-003 and logic_owl:L-003 cite release checklist/license consistency.",
+      "impact": "External users could see contradictory packaging guidance.",
+      "required_builder_action": "Keep CHANGELOG, README, LICENSE, and packaging docs consistent."
+    }
+  ],
+  "rejected_findings": [
+    {
+      "source_ids": ["logic_owl:L-001"],
+      "reason": "duplicate",
+      "explanation": "The preflight documentation action is covered by guardian_owl:G-001."
+    },
+    {
+      "source_ids": ["logic_owl:L-002"],
+      "reason": "low_value",
+      "explanation": "The model override example is useful but not release-blocking."
+    },
+    {
+      "source_ids": ["guardian_owl:G-002"],
+      "reason": "duplicate",
+      "explanation": "Custom root dry-run guidance is covered by the installer docs action."
+    },
+    {
+      "source_ids": ["guardian_owl:G-003"],
+      "reason": "duplicate",
+      "explanation": "Legacy cleanup guidance is covered by the --force migration action."
+    },
+    {
+      "source_ids": ["proof_owl:P-002"],
+      "reason": "duplicate",
+      "explanation": "Full-accounting validator coverage is already part of release validation."
+    }
+  ],
+  "builder_instructions": [
+    "Fix the blocking --force documentation first.",
+    "Keep the release checklist/license wording consistent.",
+    "Add or keep plugin installer preflight coverage."
+  ]
+}

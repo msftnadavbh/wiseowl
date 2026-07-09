@@ -1,0 +1,65 @@
+{
+  "verdict": "fix_required",
+  "accepted_findings": [
+    {
+      "source_ids": ["guardian_owl:G-001"],
+      "severity": "blocking",
+      "category": "security",
+      "issue": "Changed API routes may expose sensitive operational data without explicit auth coverage.",
+      "evidence": "guardian_owl:G-001 cites PATCH /api/followups without middleware or route-level auth proof.",
+      "impact": "Sensitive operational data could be read or changed by an unauthenticated caller.",
+      "required_builder_action": "Add explicit auth/middleware coverage and a negative route test."
+    },
+    {
+      "source_ids": ["proof_owl:P-privacy-persistence-tests", "guardian_owl:G-003"],
+      "severity": "blocking",
+      "category": "testability",
+      "issue": "Protected data persistence in localStorage needs a negative regression test.",
+      "evidence": "proof_owl:P-privacy-persistence-tests cites missing negative coverage; guardian_owl:G-003 cites saved localStorage templates.",
+      "impact": "Protected internal data could be silently persisted in the browser.",
+      "required_builder_action": "Exclude sensitive fields by default and add a negative localStorage persistence test."
+    },
+    {
+      "source_ids": ["guardian_owl:G-002"],
+      "severity": "non_blocking",
+      "category": "security",
+      "issue": "Per-send AI opt-in behavior should be documented.",
+      "evidence": "guardian_owl:G-002 cites non-persistent per-send OpenRouter opt-in.",
+      "impact": "Users may need a clear expectation, but protected data is not sent by default.",
+      "required_builder_action": "Document per-send opt-in behavior."
+    },
+    {
+      "source_ids": ["proof_owl:P-announcement-regression-specificity"],
+      "severity": "non_blocking",
+      "category": "testability",
+      "issue": "Announcement regression assertions should be more specific.",
+      "evidence": "proof_owl:P-announcement-regression-specificity cites missing announcementSent/status assertions.",
+      "impact": "A status regression could pass broad UI checks.",
+      "required_builder_action": "Assert announcementSent and status transitions explicitly."
+    },
+    {
+      "source_ids": ["proof_owl:P-browser-checks-not-assertive"],
+      "severity": "non_blocking",
+      "category": "ci",
+      "issue": "Browser validation needs an assertion-bearing command.",
+      "evidence": "proof_owl:P-browser-checks-not-assertive cites manual browser checks without CI command linkage.",
+      "impact": "The check may not be repeatable.",
+      "required_builder_action": "Name or add the assertion-bearing command."
+    },
+    {
+      "source_ids": ["proof_owl:P-api-route-test-gap"],
+      "severity": "non_blocking",
+      "category": "testability",
+      "issue": "Route-level PATCH semantics and rejected fields need tests.",
+      "evidence": "proof_owl:P-api-route-test-gap cites missing route-level rejected-field tests.",
+      "impact": "Unexpected writable fields could slip into the API.",
+      "required_builder_action": "Add route-level tests for accepted and rejected PATCH fields."
+    }
+  ],
+  "rejected_findings": [],
+  "builder_instructions": [
+    "Fix the blocking API auth and localStorage privacy proof gaps before finalizing.",
+    "Apply non-blocking test/documentation improvements when low risk.",
+    "Rerun the relevant route, storage, and browser checks."
+  ]
+}

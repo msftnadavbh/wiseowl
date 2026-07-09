@@ -1,0 +1,12 @@
+{
+  "verdict": "pass",
+  "accepted_findings": [],
+  "rejected_findings": [
+    {
+      "source_ids": ["proof_owl:P-CI-001"],
+      "reason": "low_value",
+      "explanation": "The final response already records the exact command and output."
+    }
+  ],
+  "builder_instructions": ["No accepted findings remain."]
+}

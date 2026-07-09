@@ -1,0 +1,6 @@
+{
+  "verdict": "pass",
+  "accepted_findings": [],
+  "rejected_findings": [],
+  "builder_instructions": ["This packet is invalid when source critics are supplied."]
+}

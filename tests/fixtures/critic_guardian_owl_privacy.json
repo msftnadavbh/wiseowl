@@ -1,0 +1,17 @@
+{
+  "role": "guardian_owl",
+  "verdict": "blocked",
+  "findings": [
+    {
+      "id": "G-PRIV-001",
+      "severity": "blocking",
+      "category": "security",
+      "issue": "Protected student follow-up notes would be sent to a third-party model provider by default.",
+      "evidence": "The plan sends attendance and follow-up notes to OpenRouter without field exclusion or opt-in.",
+      "impact": "Protected internal student data could leave the trusted boundary.",
+      "suggested_fix": "Exclude sensitive fields by default, require explicit opt-in, and add a negative test.",
+      "confidence": "high"
+    }
+  ],
+  "notes": []
+}

@@ -1,0 +1,16 @@
+{
+  "verdict": "fix_required",
+  "accepted_findings": [
+    {
+      "source_ids": ["guardian_owl:G-001", "proof_owl:P-003"],
+      "severity": "blocking",
+      "category": "security",
+      "issue": "Installation and release docs are unsafe.",
+      "evidence": "guardian_owl:G-001 is about --force install docs; proof_owl:P-003 is about stale release checklist/license text.",
+      "impact": "The merged finding misrepresents non-blocking release hygiene as a blocking security issue.",
+      "required_builder_action": "Treat all release docs as a blocking security issue."
+    }
+  ],
+  "rejected_findings": [],
+  "builder_instructions": ["This fixture illustrates the over-merge pattern Prime Owl must avoid."]
+}
