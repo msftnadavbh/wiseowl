@@ -89,6 +89,14 @@ Codex gathers a compact review packet, selected read-only reviewers return JSON,
 - `caution`: accepted findings exist, but none are blocking.
 - `fix_required`: at least one accepted finding is blocking.
 
+### See It In Codex CLI
+
+<p align="center">
+  <img src="assets/wise-owl-cli-demo.gif" alt="Wise Owl Codex CLI demo">
+</p>
+
+This is a visual replay from a real Codex CLI transcript in a disposable demo repo. Timing is compressed for README readability, and local warning noise was removed. The source excerpt is in [docs/demo-transcript.md](docs/demo-transcript.md).
+
 ## Modes
 
 | Mode | Reviewers | Best For |

@@ -42,6 +42,9 @@ The archive is written to `dist/wise-owl-v0.1.0.zip`. A tarball can be built fro
 - `assets/wise-owl-workflow.png`
 - `assets/wise-owl-install.svg`
 - `assets/wise-owl-install.png`
+- `assets/wise-owl-cli-demo.gif`
+- CLI demo transcript under `docs/demo-transcript.md`
+- CLI demo renderer under `scripts/render_cli_demo.mjs`
 - Plugin logo asset under `wise-owl-plugin/assets/wise-owl-logo.png`
 - Plugin transparent logo asset under `wise-owl-plugin/assets/wise-owl-logo-transparent.png`
 - Plugin workflow screenshot asset under `wise-owl-plugin/assets/wise-owl-workflow.svg`

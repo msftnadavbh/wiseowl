@@ -23,6 +23,7 @@ Expected package contents:
 - `assets/wise-owl-workflow.png`
 - `assets/wise-owl-install.svg`
 - `assets/wise-owl-install.png`
+- `assets/wise-owl-cli-demo.gif`
 - `wise-owl-plugin/assets/wise-owl-logo.png`
 - `wise-owl-plugin/assets/wise-owl-logo-transparent.png`
 - `wise-owl-plugin/assets/wise-owl-workflow.svg`

@@ -23,6 +23,7 @@ python3 -m py_compile \
   wise-owl-plugin/scripts/install_wise_owl.py \
   scripts/verify_release.py \
   scripts/build_release_archive.py
+PLAYWRIGHT_NODE_MODULES=/tmp/wiseowl-playwright/node_modules node scripts/render_cli_demo.mjs
 python3 scripts/verify_release.py
 python3 scripts/build_release_archive.py
 find . -type d \( -name "__pycache__" -o -name ".pytest_cache" \) -print
@@ -43,7 +44,7 @@ Use Wise Owl Standard on a small docs or validator change. Expect Logic Owl and 
 
 ## Package Contents
 
-The release archive should match `MANIFEST.md`: repo-local skill, custom agent TOMLs, plugin skeleton, docs, tests, scripts, install shortcut, license, changelog, README, AGENTS policy, and assets.
+The release archive should match `MANIFEST.md`: repo-local skill, custom agent TOMLs, plugin skeleton, docs, tests, scripts, install shortcut, license, changelog, README, AGENTS policy, and assets. README launch assets include the static install/workflow previews and the Codex CLI replay GIF.
 
 ## Publish
 

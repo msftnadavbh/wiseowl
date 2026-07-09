@@ -463,6 +463,9 @@ class WiseOwlInstallTests(unittest.TestCase):
         self.assertIn("assets/wise-owl-logo-transparent.png", readme)
         self.assertIn("assets/wise-owl-workflow.png", readme)
         self.assertIn("assets/wise-owl-install.png", readme)
+        self.assertIn("assets/wise-owl-cli-demo.gif", readme)
+        self.assertIn("visual replay from a real Codex CLI transcript", readme)
+        self.assertIn("docs/demo-transcript.md", readme)
 
     def test_plugin_manifest_references_packaged_logo(self):
         import json
