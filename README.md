@@ -20,9 +20,11 @@
   <a href="LICENSE">MIT</a>
 </p>
 
-Wise Owl gives Codex a sharper pre-ship moment. Ask for a review, let focused read-only reviewers inspect the diff, and get one Prime Owl verdict instead of a pile of loose opinions.
+> Keep the duck for debugging. Bring the owl for the second opinion.
 
-Use it when a change matters enough that "looks fine" is not enough.
+Wise Owl gives Codex a sharper pre-ship moment: ask for a review, let focused read-only reviewers inspect the plan or diff, and get one Prime Owl verdict instead of a pile of loose opinions.
+
+Use it when a change matters enough that "looks fine" is not enough. It is built for the review step most agentic coding workflows need: one more structured pass over correctness, tests, security, and release risk before you trust the change.
 
 <p align="center">
   <img src="assets/wise-owl-workflow.png" alt="Wise Owl workflow preview">
