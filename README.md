@@ -1,40 +1,32 @@
 <p align="center">
-  <img src="assets/wise-owl-logo-transparent.png" alt="Wise Owl logo" width="220">
+  <img src="assets/wise-owl-logo-transparent.png" alt="Wise Owl logo" width="190">
 </p>
 
 <h1 align="center">Wise Owl</h1>
 
 <p align="center">
-  <strong>Multi-agent second-opinion review workflow for Codex.</strong>
+  <strong>A second-opinion review ritual for Codex, ready in one minute.</strong>
 </p>
 
 <p align="center">
+  <a href="#install-in-60-seconds">Install</a>
+  &nbsp;|&nbsp;
+  <a href="#watch-it-work">Demo</a>
+  &nbsp;|&nbsp;
   <a href="docs/wise-owl.md">Workflow guide</a>
   &nbsp;|&nbsp;
-  <a href="docs/packaging.md">Install docs</a>
-  &nbsp;|&nbsp;
-  <a href="docs/release.md">Release checks</a>
+  <a href="docs/packaging.md">Docs</a>
   &nbsp;|&nbsp;
   <a href="LICENSE">MIT</a>
 </p>
 
-Wise Owl gives Codex a calmer review loop: focused read-only reviewers inspect the risky parts, Prime Owl removes noise, and you get one action list before you finalize.
+Wise Owl gives Codex a sharper pre-ship moment. Ask for a review, let focused read-only reviewers inspect the diff, and get one Prime Owl verdict instead of a pile of loose opinions.
 
-Use it when a change is important enough that "looks fine" is not enough.
+Use it when a change matters enough that "looks fine" is not enough.
 
 <p align="center">
   <img src="assets/wise-owl-workflow.png" alt="Wise Owl workflow preview">
 </p>
-
-## Why Install It
-
-- Catch wrong assumptions before they ship.
-- Separate real findings from style noise.
-- Make review output predictable with strict JSON packets.
-- Keep Codex in charge of the work while reviewers stay read-only.
-- Add a repeatable final-review habit for release gates, security-sensitive edits, installer changes, and tricky bugs.
-
-Wise Owl is a Codex skill + custom-agent workflow. It is not a daemon, hosted service, background hook, runtime framework, custom orchestrator, or direct model API client.
 
 ## Install In 60 Seconds
 
@@ -46,129 +38,76 @@ python3 install.py --dry-run
 python3 install.py
 ```
 
-Then restart or reopen Codex and ask:
+Restart or reopen Codex, then ask:
 
 ```text
 Use Wise Owl Standard to review this change before I finalize.
 ```
 
+That is the whole first run. The dry run previews the install, and the normal run adds the Wise Owl skill, the custom reviewer agents, and the small Codex config merge.
+
 <p align="center">
   <img src="assets/wise-owl-install.png" alt="Wise Owl install preview">
 </p>
 
-The dry run shows exactly what would change. The install writes the skill to `~/.agents/skills/wise-owl`, custom agents to `~/.codex/agents`, and config to `~/.codex/config.toml`.
+## Why You'll Keep It
 
-Use `--force` only after reviewing target paths and intentionally overwriting or migrating legacy Wise Owl files. It is not the default first-time install path.
+- One calm final check before you ship.
+- Reviewers with clear jobs: logic, safety, proof, and judgment.
+- Prime Owl filters the noise and turns review into an action list.
+- Works from normal Codex prompts, no new app to babysit.
+- Local-first package: skill files, custom-agent TOMLs, docs, fixtures, and validator support.
+- Your setup lives in your Codex environment, without a separate Wise Owl account or dashboard.
 
-Prefer the explicit installer path? It is the same behavior:
+## Watch It Work
 
-```bash
-python3 .agents/skills/wise-owl/scripts/wise_owl_install.py --scope user --dry-run
-python3 .agents/skills/wise-owl/scripts/wise_owl_install.py --scope user
-```
+<p align="center">
+  <img src="assets/wise-owl-cli-demo.gif" alt="Wise Owl Codex CLI demo">
+</p>
 
-## How It Feels In Codex
+Start from a normal Codex prompt. Wise Owl Standard selects reviewers, collects read-only feedback, and returns a Prime Owl verdict with one final action list. The demo is based on a disposable-repo Codex CLI run; the source excerpt is in [docs/demo-transcript.md](docs/demo-transcript.md).
 
-Ask for a mode in plain language:
+## Pick The Right Review
+
+| Mode | Reviewers | Use It For |
+| --- | --- | --- |
+| Lite | Prime Owl only | Quick sanity checks, docs, prompts, small plans |
+| Standard | Logic Owl + Proof Owl, then Prime Owl | Normal implementation, tests, packaging, installer changes |
+| Security | Guardian Owl, then Prime Owl | Auth, privacy, secrets, permissions, sensitive data |
+| Full Council | Logic Owl + Guardian Owl + Proof Owl, then Prime Owl | Release gates, public APIs, filesystem/network boundaries, high-risk changes |
+
+Ask in plain language:
 
 ```text
 Use Wise Owl Lite to sanity-check this README change.
 ```
 
 ```text
-Use Wise Owl Standard to review the final diff and tests.
-```
-
-```text
 Use Wise Owl Full Council for this release gate.
 ```
 
-Codex gathers a compact review packet, selected read-only reviewers return JSON, and Prime Owl gives the builder one verdict:
+## Meet The Owls
 
-- `pass`: no accepted findings remain.
-- `caution`: accepted findings exist, but none are blocking.
-- `fix_required`: at least one accepted finding is blocking.
+- **Logic Owl** checks correctness, contracts, edge cases, and runtime behavior.
+- **Guardian Owl** checks security, privacy, permissions, secrets, and unsafe operations.
+- **Proof Owl** checks tests, validation, CI confidence, and evidence quality.
+- **Prime Owl** judges the critic output, rejects weak findings, ranks real issues, and gives Codex one builder-facing packet.
 
-### See It In Codex CLI
+## What Gets Installed
 
-<p align="center">
-  <img src="assets/wise-owl-cli-demo.gif" alt="Wise Owl Codex CLI demo">
-</p>
+- `~/.agents/skills/wise-owl`: the Codex skill.
+- `~/.codex/agents`: the read-only custom reviewer TOMLs.
+- `~/.codex/config.toml`: a safe merge for Codex agent settings.
 
-Wise Owl runs from a normal Codex prompt. This demo shows the Standard review path: reviewer selection, read-only checks, Prime Owl verdict, and one final action list. It is based on a disposable-repo Codex CLI run; the source excerpt is in [docs/demo-transcript.md](docs/demo-transcript.md).
-
-## Modes
-
-| Mode | Reviewers | Best For |
-| --- | --- | --- |
-| Lite | Prime Owl only | Docs, prompts, small plans, quick sanity checks |
-| Standard | Logic Owl + Proof Owl, then Prime Owl | Normal implementation, tests, packaging, installer changes |
-| Security | Guardian Owl, then Prime Owl | Security, privacy, auth, secrets, sensitive data boundaries |
-| Full Council | Logic Owl + Guardian Owl + Proof Owl, then Prime Owl | Release gates, public API contracts, filesystem/network boundaries, high-risk changes |
-
-Parallel critic execution depends on Codex runtime support. Wise Owl provides prompt/runtime guidance, agent TOMLs, schemas, docs, fixtures, and validator scripts.
-
-## Roles
-
-- **Logic Owl** (`logic_owl`): correctness, contracts, edge cases, runtime behavior.
-- **Guardian Owl** (`guardian_owl`): security, privacy, permissions, secrets, unsafe operations.
-- **Proof Owl** (`proof_owl`): tests, validation, CI confidence, false-positive checks.
-- **Prime Owl** (`prime_owl`): judge that deduplicates, rejects noise, ranks severity, and produces one review packet.
-
-## Validate Packets
-
-```bash
-python3 .agents/skills/wise-owl/scripts/wise_owl_validate_packet.py \
-  --type critic \
-  --file tests/fixtures/critic_valid_logic_pass.json
-
-python3 .agents/skills/wise-owl/scripts/wise_owl_validate_packet.py \
-  --type prime \
-  --file tests/fixtures/prime_valid_pass_empty.json
-
-python3 .agents/skills/wise-owl/scripts/wise_owl_validate_packet.py \
-  --type prime \
-  --file tests/fixtures/prime_valid_current_fix_required_api_auth_and_storage.json \
-  --critics tests/fixtures/critic_current_guardian_owl_api_auth_and_storage.json \
-            tests/fixtures/critic_current_proof_owl_persistence_and_routes.json
-```
-
-Without `--critics`, Prime Owl validation is syntax/schema-only and source accounting is not checked.
-
-## Packaging Checks
-
-```bash
-PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests
-python3 -m py_compile \
-  install.py \
-  .agents/skills/wise-owl/scripts/wise_owl_validate_packet.py \
-  .agents/skills/wise-owl/scripts/wise_owl_install.py \
-  wise-owl-plugin/scripts/install_wise_owl.py \
-  scripts/verify_release.py \
-  scripts/build_release_archive.py
-python3 scripts/verify_release.py
-python3 scripts/build_release_archive.py
-```
-
-The release archive is generated locally under `dist/` and should generally not be committed.
-
-The plugin skeleton under `wise-owl-plugin/` packages the skill and plugin assets. Custom-agent TOMLs still need to be copied into Codex-discovered locations by the installer unless future Codex plugin docs add first-class custom-agent registration.
-
-## Known Limitations
-
-- Model names are configurable and depend on models available in the local Codex environment.
-- Model diversity depends on available Codex models.
-- Parallel execution depends on Codex runtime support.
-- Read-only reviewer instructions complement, but do not replace, runtime sandbox and approval policy.
-- Plugin custom-agent TOMLs may still need installer copy into Codex-discovered locations.
+First-time installs should use the dry run and normal install shown above. `--force` exists for intentional overwrites or legacy agent cleanup.
 
 ## Docs
 
-- [docs/wise-owl.md](docs/wise-owl.md): workflow, modes, schemas, and limitations.
+- [docs/wise-owl.md](docs/wise-owl.md): workflow, modes, schemas, and examples.
 - [docs/packaging.md](docs/packaging.md): install, uninstall, plugin skeleton, and release checklist.
 - [docs/distribution.md](docs/distribution.md): package contents and archive expectations.
-- [docs/release.md](docs/release.md): v0.1.0 release validation.
+- [docs/release.md](docs/release.md): maintainer validation and release commands.
 
 ## License
 
-MIT. The MIT license decision is recorded in [docs/LICENSE_DECISION.md](docs/LICENSE_DECISION.md).
+MIT licensed.

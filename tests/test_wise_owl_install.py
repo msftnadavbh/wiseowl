@@ -457,15 +457,19 @@ class WiseOwlInstallTests(unittest.TestCase):
         self.assertIn("Use `--force` only after reviewing", packaging)
         self.assertNotIn("--scope user --force", packaging)
         self.assertNotIn("--scope user --force", readme)
-        self.assertIn("MIT license decision", readme)
+        self.assertIn("MIT licensed", readme)
         self.assertIn("Install In 60 Seconds", readme)
         self.assertIn("python3 install.py --dry-run", readme)
         self.assertIn("assets/wise-owl-logo-transparent.png", readme)
         self.assertIn("assets/wise-owl-workflow.png", readme)
         self.assertIn("assets/wise-owl-install.png", readme)
         self.assertIn("assets/wise-owl-cli-demo.gif", readme)
-        self.assertIn("This demo shows the Standard review path", readme)
+        self.assertIn("Wise Owl gives Codex a sharper pre-ship moment", readme)
+        self.assertIn("Prime Owl filters the noise", readme)
+        self.assertIn("Start from a normal Codex prompt", readme)
         self.assertIn("docs/demo-transcript.md", readme)
+        self.assertNotIn("Packaging Checks", readme)
+        self.assertNotIn("Known Limitations", readme)
 
     def test_plugin_manifest_references_packaged_logo(self):
         import json
