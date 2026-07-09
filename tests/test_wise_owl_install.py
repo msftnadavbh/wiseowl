@@ -96,6 +96,23 @@ class WiseOwlInstallTests(unittest.TestCase):
         self.assertIn("Would change (dry run):", result.stdout)
         self.assertFalse((self.root / ".agents").exists())
 
+    def test_root_installer_defaults_to_user_scope(self):
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "install.py"), "--dry-run"],
+            cwd=self.root,
+            env={
+                "HOME": str(self.root / "home"),
+                "WISE_OWL_TEMPLATE_ROOT": str(ROOT),
+            },
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Would change (dry run):", result.stdout)
+        self.assertIn(str(self.user_skills_home / "skills" / "wise-owl"), result.stdout)
+        self.assertFalse((self.user_skills_home / "skills").exists())
+
     def test_generated_tomls_parse_with_tomllib_when_available(self):
         try:
             import tomllib
@@ -441,15 +458,21 @@ class WiseOwlInstallTests(unittest.TestCase):
         self.assertNotIn("--scope user --force", packaging)
         self.assertNotIn("--scope user --force", readme)
         self.assertIn("MIT license decision", readme)
-        self.assertIn("assets/wise-owl-logo.png", readme)
+        self.assertIn("Install In 60 Seconds", readme)
+        self.assertIn("python3 install.py --dry-run", readme)
+        self.assertIn("assets/wise-owl-logo-transparent.png", readme)
+        self.assertIn("assets/wise-owl-workflow.png", readme)
+        self.assertIn("assets/wise-owl-install.png", readme)
 
     def test_plugin_manifest_references_packaged_logo(self):
         import json
 
         manifest = json.loads((ROOT / "wise-owl-plugin" / ".codex-plugin" / "plugin.json").read_text())
-        self.assertEqual(manifest["interface"]["logo"], "./assets/wise-owl-logo.png")
-        self.assertEqual(manifest["interface"]["composerIcon"], "./assets/wise-owl-logo.png")
-        self.assertTrue((ROOT / "wise-owl-plugin" / "assets" / "wise-owl-logo.png").is_file())
+        self.assertEqual(manifest["interface"]["logo"], "./assets/wise-owl-logo-transparent.png")
+        self.assertEqual(manifest["interface"]["composerIcon"], "./assets/wise-owl-logo-transparent.png")
+        self.assertEqual(manifest["interface"]["screenshots"], ["./assets/wise-owl-workflow.png"])
+        self.assertTrue((ROOT / "wise-owl-plugin" / "assets" / "wise-owl-logo-transparent.png").is_file())
+        self.assertTrue((ROOT / "wise-owl-plugin" / "assets" / "wise-owl-workflow.png").is_file())
 
 
 if __name__ == "__main__":

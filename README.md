@@ -1,45 +1,104 @@
 <p align="center">
-  <img src="assets/wise-owl-logo.png" alt="Wise Owl logo" width="260">
+  <img src="assets/wise-owl-logo-transparent.png" alt="Wise Owl logo" width="220">
 </p>
 
-# Wise Owl
+<h1 align="center">Wise Owl</h1>
 
-**Multi-agent second-opinion review workflow for Codex.**
+<p align="center">
+  <strong>Multi-agent second-opinion review workflow for Codex.</strong>
+</p>
 
-Status: `v0.1.0`
+<p align="center">
+  <a href="docs/wise-owl.md">Workflow guide</a>
+  &nbsp;|&nbsp;
+  <a href="docs/packaging.md">Install docs</a>
+  &nbsp;|&nbsp;
+  <a href="docs/release.md">Release checks</a>
+  &nbsp;|&nbsp;
+  <a href="LICENSE">MIT</a>
+</p>
 
-Wise Owl is a lightweight Codex skill + custom-agent workflow for disciplined review before risky edits or release gates. The builder remains the only editor. Logic Owl, Guardian Owl, and Proof Owl are read-only critics; Prime Owl reduces their packets into one builder-facing decision.
+Wise Owl gives Codex a calmer review loop: focused read-only reviewers inspect the risky parts, Prime Owl removes noise, and you get one action list before you finalize.
 
-It exists to make reviews less noisy: critics return strict JSON, Prime Owl rejects weak findings, and the builder applies only accepted blocking items unless the user asks for broader cleanup.
+Use it when a change is important enough that "looks fine" is not enough.
 
-Wise Owl is not a daemon, hosted service, background hook, runtime framework, custom orchestrator, or direct model API client.
+<p align="center">
+  <img src="assets/wise-owl-workflow.png" alt="Wise Owl workflow preview">
+</p>
 
-## Quick Start
+## Why Install It
 
-Repo-local install is the safest first path:
+- Catch wrong assumptions before they ship.
+- Separate real findings from style noise.
+- Make review output predictable with strict JSON packets.
+- Keep Codex in charge of the work while reviewers stay read-only.
+- Add a repeatable final-review habit for release gates, security-sensitive edits, installer changes, and tricky bugs.
+
+Wise Owl is a Codex skill + custom-agent workflow. It is not a daemon, hosted service, background hook, runtime framework, custom orchestrator, or direct model API client.
+
+## Install In 60 Seconds
 
 ```bash
-python3 .agents/skills/wise-owl/scripts/wise_owl_install.py --scope repo --dry-run --patch-agents-md
-python3 .agents/skills/wise-owl/scripts/wise_owl_install.py --scope repo --patch-agents-md
+git clone https://github.com/msftnadavbh/wiseowl.git
+cd wiseowl
+
+python3 install.py --dry-run
+python3 install.py
 ```
 
-User-local install should also be previewed first:
+Then restart or reopen Codex and ask:
+
+```text
+Use Wise Owl Standard to review this change before I finalize.
+```
+
+<p align="center">
+  <img src="assets/wise-owl-install.png" alt="Wise Owl install preview">
+</p>
+
+The dry run shows exactly what would change. The install writes the skill to `~/.agents/skills/wise-owl`, custom agents to `~/.codex/agents`, and config to `~/.codex/config.toml`.
+
+Use `--force` only after reviewing target paths and intentionally overwriting or migrating legacy Wise Owl files. It is not the default first-time install path.
+
+Prefer the explicit installer path? It is the same behavior:
 
 ```bash
 python3 .agents/skills/wise-owl/scripts/wise_owl_install.py --scope user --dry-run
 python3 .agents/skills/wise-owl/scripts/wise_owl_install.py --scope user
 ```
 
-User-local install writes the skill to `~/.agents/skills/wise-owl`, custom agents to `~/.codex/agents`, and config to `~/.codex/config.toml`. Use `--force` only after reviewing target paths and intentionally overwriting or migrating legacy Wise Owl files.
+## How It Feels In Codex
+
+Ask for a mode in plain language:
+
+```text
+Use Wise Owl Lite to sanity-check this README change.
+```
+
+```text
+Use Wise Owl Standard to review the final diff and tests.
+```
+
+```text
+Use Wise Owl Full Council for this release gate.
+```
+
+Codex gathers a compact review packet, selected read-only reviewers return JSON, and Prime Owl gives the builder one verdict:
+
+- `pass`: no accepted findings remain.
+- `caution`: accepted findings exist, but none are blocking.
+- `fix_required`: at least one accepted finding is blocking.
 
 ## Modes
 
-- **Lite**: Prime Owl only for low-risk review, sanity-checks, docs, prompts, README updates, and small plans.
-- **Standard**: Logic Owl + Proof Owl, then Prime Owl for normal implementation, validator, installer, packaging, and CI/test changes.
-- **Security**: Guardian Owl, then Prime Owl for narrowly security/privacy-focused review.
-- **Full Council**: Logic Owl + Guardian Owl + Proof Owl, then Prime Owl for high-risk or cross-boundary work.
+| Mode | Reviewers | Best For |
+| --- | --- | --- |
+| Lite | Prime Owl only | Docs, prompts, small plans, quick sanity checks |
+| Standard | Logic Owl + Proof Owl, then Prime Owl | Normal implementation, tests, packaging, installer changes |
+| Security | Guardian Owl, then Prime Owl | Security, privacy, auth, secrets, sensitive data boundaries |
+| Full Council | Logic Owl + Guardian Owl + Proof Owl, then Prime Owl | Release gates, public API contracts, filesystem/network boundaries, high-risk changes |
 
-Parallel critic execution depends on Codex runtime support. Wise Owl only provides prompt/runtime guidance, agent TOMLs, schemas, docs, fixtures, and validator scripts.
+Parallel critic execution depends on Codex runtime support. Wise Owl provides prompt/runtime guidance, agent TOMLs, schemas, docs, fixtures, and validator scripts.
 
 ## Roles
 
@@ -48,7 +107,7 @@ Parallel critic execution depends on Codex runtime support. Wise Owl only provid
 - **Proof Owl** (`proof_owl`): tests, validation, CI confidence, false-positive checks.
 - **Prime Owl** (`prime_owl`): judge that deduplicates, rejects noise, ranks severity, and produces one review packet.
 
-## Validator Examples
+## Validate Packets
 
 ```bash
 python3 .agents/skills/wise-owl/scripts/wise_owl_validate_packet.py \
@@ -68,11 +127,12 @@ python3 .agents/skills/wise-owl/scripts/wise_owl_validate_packet.py \
 
 Without `--critics`, Prime Owl validation is syntax/schema-only and source accounting is not checked.
 
-## Packaging
+## Packaging Checks
 
 ```bash
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests
 python3 -m py_compile \
+  install.py \
   .agents/skills/wise-owl/scripts/wise_owl_validate_packet.py \
   .agents/skills/wise-owl/scripts/wise_owl_install.py \
   wise-owl-plugin/scripts/install_wise_owl.py \

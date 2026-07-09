@@ -29,9 +29,18 @@ class ReleaseScriptTests(unittest.TestCase):
         build_release_archive = load_script("build_release_archive")
         files = {path.as_posix() for path in build_release_archive.iter_files(ROOT)}
         expected = {
+            "install.py",
             ".gitignore",
             "assets/wise-owl-logo.png",
+            "assets/wise-owl-logo-transparent.png",
+            "assets/wise-owl-workflow.svg",
+            "assets/wise-owl-workflow.png",
+            "assets/wise-owl-install.svg",
+            "assets/wise-owl-install.png",
             "wise-owl-plugin/assets/wise-owl-logo.png",
+            "wise-owl-plugin/assets/wise-owl-logo-transparent.png",
+            "wise-owl-plugin/assets/wise-owl-workflow.svg",
+            "wise-owl-plugin/assets/wise-owl-workflow.png",
             "wise-owl-plugin/scripts/install_wise_owl.py",
         }
         self.assertTrue(expected.issubset(files))

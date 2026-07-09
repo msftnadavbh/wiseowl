@@ -2,6 +2,7 @@
 
 Expected package contents:
 - `README.md`
+- `install.py`
 - `LICENSE`
 - `CHANGELOG.md`
 - `AGENTS.md`
@@ -17,7 +18,15 @@ Expected package contents:
 - `tests/**`
 - `scripts/**`
 - `assets/wise-owl-logo.png`
+- `assets/wise-owl-logo-transparent.png`
+- `assets/wise-owl-workflow.svg`
+- `assets/wise-owl-workflow.png`
+- `assets/wise-owl-install.svg`
+- `assets/wise-owl-install.png`
 - `wise-owl-plugin/assets/wise-owl-logo.png`
+- `wise-owl-plugin/assets/wise-owl-logo-transparent.png`
+- `wise-owl-plugin/assets/wise-owl-workflow.svg`
+- `wise-owl-plugin/assets/wise-owl-workflow.png`
 
 Excluded/generated files:
 - `__pycache__/`

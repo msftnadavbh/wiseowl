@@ -17,6 +17,7 @@ Wise Owl v0.1.0 is a local Codex skill and custom-agent workflow. It is not a ho
 ```bash
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests
 python3 -m py_compile \
+  install.py \
   .agents/skills/wise-owl/scripts/wise_owl_validate_packet.py \
   .agents/skills/wise-owl/scripts/wise_owl_install.py \
   wise-owl-plugin/scripts/install_wise_owl.py \
@@ -42,7 +43,7 @@ Use Wise Owl Standard on a small docs or validator change. Expect Logic Owl and 
 
 ## Package Contents
 
-The release archive should match `MANIFEST.md`: repo-local skill, custom agent TOMLs, plugin skeleton, docs, tests, scripts, license, changelog, README, AGENTS policy, and assets.
+The release archive should match `MANIFEST.md`: repo-local skill, custom agent TOMLs, plugin skeleton, docs, tests, scripts, install shortcut, license, changelog, README, AGENTS policy, and assets.
 
 ## Publish
 

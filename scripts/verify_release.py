@@ -11,12 +11,18 @@ AGENTS = ("logic_owl.toml", "guardian_owl.toml", "proof_owl.toml", "prime_owl.to
 
 REQUIRED_FILES = (
     "README.md",
+    "install.py",
     "LICENSE",
     "CHANGELOG.md",
     "AGENTS.md",
     "MANIFEST.md",
     ".gitignore",
     "assets/wise-owl-logo.png",
+    "assets/wise-owl-logo-transparent.png",
+    "assets/wise-owl-workflow.svg",
+    "assets/wise-owl-workflow.png",
+    "assets/wise-owl-install.svg",
+    "assets/wise-owl-install.png",
     ".agents/skills/wise-owl/SKILL.md",
     ".agents/skills/wise-owl/scripts/wise_owl_validate_packet.py",
     ".agents/skills/wise-owl/scripts/wise_owl_install.py",
@@ -29,6 +35,9 @@ REQUIRED_FILES = (
     "wise-owl-plugin/skills/wise-owl/SKILL.md",
     "wise-owl-plugin/scripts/install_wise_owl.py",
     "wise-owl-plugin/assets/wise-owl-logo.png",
+    "wise-owl-plugin/assets/wise-owl-logo-transparent.png",
+    "wise-owl-plugin/assets/wise-owl-workflow.svg",
+    "wise-owl-plugin/assets/wise-owl-workflow.png",
 )
 
 REQUIRED_DIRS = (

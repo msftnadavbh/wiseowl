@@ -10,8 +10,9 @@
     "developerName": "Local",
     "category": "Productivity",
     "capabilities": ["Read"],
-    "logo": "./assets/wise-owl-logo.png",
-    "composerIcon": "./assets/wise-owl-logo.png",
+    "logo": "./assets/wise-owl-logo-transparent.png",
+    "composerIcon": "./assets/wise-owl-logo-transparent.png",
+    "screenshots": ["./assets/wise-owl-workflow.png"],
     "defaultPrompt": [
       "Use Wise Owl to review this plan before implementation.",
       "Use Wise Owl to review the final diff and tests before finalizing."

@@ -30,14 +30,22 @@ The archive is written to `dist/wise-owl-v0.1.0.zip`. A tarball can be built fro
 
 ## Include
 
-- Root docs: `README.md`, `LICENSE`, `CHANGELOG.md`, `AGENTS.md`, `MANIFEST.md`, `.gitignore`
+- Root files: `README.md`, `install.py`, `LICENSE`, `CHANGELOG.md`, `AGENTS.md`, `MANIFEST.md`, `.gitignore`
 - Wise Owl skill under `.agents/skills/wise-owl/`
 - Repo-local custom agents under `.codex/agents/`
 - `.codex/config.toml`
 - Plugin skeleton under `wise-owl-plugin/`
 - `docs/`, `tests/`, `scripts/`
 - `assets/wise-owl-logo.png`
+- `assets/wise-owl-logo-transparent.png`
+- `assets/wise-owl-workflow.svg`
+- `assets/wise-owl-workflow.png`
+- `assets/wise-owl-install.svg`
+- `assets/wise-owl-install.png`
 - Plugin logo asset under `wise-owl-plugin/assets/wise-owl-logo.png`
+- Plugin transparent logo asset under `wise-owl-plugin/assets/wise-owl-logo-transparent.png`
+- Plugin workflow screenshot asset under `wise-owl-plugin/assets/wise-owl-workflow.svg`
+- Plugin workflow screenshot asset under `wise-owl-plugin/assets/wise-owl-workflow.png`
 
 ## Exclude
 
@@ -52,7 +60,7 @@ The archive is written to `dist/wise-owl-v0.1.0.zip`. A tarball can be built fro
 
 ## Plugin Skeleton
 
-`wise-owl-plugin/` packages the skill, plugin manifest, copied agent TOML assets, logo asset, and a plugin installer. Plugin users still need custom agent TOMLs copied into Codex-discovered locations; the plugin installer does that copy.
+`wise-owl-plugin/` packages the skill, plugin manifest, copied agent TOML assets, logo assets, a workflow screenshot asset, and a plugin installer. Plugin users still need custom agent TOMLs copied into Codex-discovered locations; the plugin installer does that copy.
 
 ## User-Local Caveat
 

@@ -11,7 +11,7 @@ from pathlib import Path
 
 VERSION = "v0.1.0"
 ARCHIVE_NAME = f"wise-owl-{VERSION}.zip"
-ROOT_FILES = ("README.md", "LICENSE", "CHANGELOG.md", "AGENTS.md", "MANIFEST.md", ".gitignore")
+ROOT_FILES = ("README.md", "install.py", "LICENSE", "CHANGELOG.md", "AGENTS.md", "MANIFEST.md", ".gitignore")
 ROOT_DIRS = (".agents", "docs", "tests", "scripts", "wise-owl-plugin", "assets")
 CODEX_FILES = (".codex/config.toml",)
 CODEX_AGENT_DIR = Path(".codex/agents")

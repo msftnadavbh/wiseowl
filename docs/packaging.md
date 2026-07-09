@@ -20,6 +20,15 @@ python3 .agents/skills/wise-owl/scripts/wise_owl_install.py --scope repo --dry-r
 
 ## User-Local Install
 
+Fast path from the repository root:
+
+```bash
+python3 install.py --dry-run
+python3 install.py
+```
+
+The shortcut defaults to `--scope user` and delegates to the same hardened installer below.
+
 Dry run:
 
 ```bash
@@ -56,6 +65,9 @@ It packages:
 - `wise-owl-plugin/skills/wise-owl/SKILL.md`
 - `wise-owl-plugin/assets/agents/*.toml`
 - `wise-owl-plugin/assets/wise-owl-logo.png`
+- `wise-owl-plugin/assets/wise-owl-logo-transparent.png`
+- `wise-owl-plugin/assets/wise-owl-workflow.svg`
+- `wise-owl-plugin/assets/wise-owl-workflow.png`
 - `wise-owl-plugin/scripts/install_wise_owl.py`
 
 Custom agent TOMLs still need to be copied into Codex-discovered locations. Use:
