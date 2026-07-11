@@ -1,0 +1,17 @@
+{
+  "role": "logic_owl",
+  "verdict": "blocked",
+  "findings": [
+    {
+      "id": "L-LITE-BLOCK-001",
+      "severity": "blocking",
+      "category": "correctness",
+      "issue": "The plan contradicts the requested output contract.",
+      "evidence": "The supplied Lite Review Packet requires JSON while the plan proposes plain text.",
+      "impact": "The implementation would violate the user request.",
+      "suggested_fix": "Keep the required JSON output contract.",
+      "confidence": "high"
+    }
+  ],
+  "notes": []
+}

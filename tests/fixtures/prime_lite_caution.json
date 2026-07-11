@@ -1,0 +1,16 @@
+{
+  "verdict": "caution",
+  "accepted_findings": [
+    {
+      "source_ids": ["logic_owl:L-LITE-CAUTION-001"],
+      "severity": "non_blocking",
+      "category": "correctness",
+      "issue": "The small plan leaves one assumption implicit.",
+      "evidence": "logic_owl:L-LITE-CAUTION-001 cites the missing compatibility assumption.",
+      "impact": "The builder could implement against the wrong compatibility target.",
+      "required_builder_action": "State the compatibility assumption before implementation."
+    }
+  ],
+  "rejected_findings": [],
+  "builder_instructions": ["Record the compatibility assumption before proceeding."]
+}

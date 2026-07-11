@@ -1,0 +1,17 @@
+{
+  "role": "logic_owl",
+  "verdict": "concerns",
+  "findings": [
+    {
+      "id": "L-LITE-CAUTION-001",
+      "severity": "non_blocking",
+      "category": "correctness",
+      "issue": "The small plan leaves one assumption implicit.",
+      "evidence": "The supplied Lite Review Packet names the change but omits its compatibility assumption.",
+      "impact": "The builder could implement the right behavior for the wrong compatibility target.",
+      "suggested_fix": "State the compatibility assumption before implementation.",
+      "confidence": "high"
+    }
+  ],
+  "notes": []
+}

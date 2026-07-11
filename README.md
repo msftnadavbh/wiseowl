@@ -74,7 +74,7 @@ Start from a normal Codex prompt. Wise Owl Standard selects reviewers, collects 
 
 | Mode | Reviewers | Use It For |
 | --- | --- | --- |
-| Lite | Prime Owl only | Quick sanity checks, docs, prompts, small plans |
+| Lite | Logic Owl + Prime Owl | Quick sanity checks, docs, prompts, small plans |
 | Standard | Logic Owl + Proof Owl, then Prime Owl | Normal implementation, tests, packaging, installer changes |
 | Security | Guardian Owl, then Prime Owl | Auth, privacy, secrets, permissions, sensitive data |
 | Full Council | Logic Owl + Guardian Owl + Proof Owl, then Prime Owl | Release gates, public APIs, filesystem/network boundaries, high-risk changes |

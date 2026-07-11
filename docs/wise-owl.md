@@ -51,12 +51,12 @@ Use Wise Owl for this auth change. Apply only Prime Owl blocking findings.
 Wise Owl mode selection is policy-guided through SKILL.md and AGENTS.md, not a deterministic background hook. Choose the cheapest mode that covers the risk. Escalate for security, privacy, tool execution, data boundaries, auth, secrets, protected data, filesystem/network boundaries, production writes, persistence, migrations, concurrency, public API contracts, or release gates.
 
 - No Wise Owl: trivial typo, formatting, README-only, pure explanation, tiny copy change, or dependency metadata only when the user did not ask for review.
-- Wise Owl Lite: Prime Owl only for low-risk review, sanity-check, second-opinion, docs, prompts, README updates, small plans, small test-only changes, naming cleanup, or low-risk installer/docs polish. Lite must not pretend to be full review: Selected reviewers is Prime Owl only; Logic Owl, Guardian Owl, and Proof Owl are `not spawned`; Review status is `complete-lite` when Prime Owl returns a valid packet.
+- Wise Owl Lite: Logic Owl, then Prime Owl for low-risk review, sanity-check, second-opinion, docs, prompts, README updates, small plans, small test-only changes, naming cleanup, or low-risk installer/docs polish. Lite must not pretend to be full review: Selected reviewers are Logic Owl and Prime Owl; Guardian Owl and Proof Owl are `not spawned`. Review status is `complete-lite` only when both Logic Owl and Prime Owl return valid packets.
 - Wise Owl Standard: Logic Owl + Proof Owl in parallel, then Prime Owl for normal implementation, non-security multi-file changes, API shape changes without sensitive data, test/CI changes, bug fixes, installer behavior, validator behavior, plugin packaging, or config merge logic.
 - Wise Owl Security: Guardian Owl, then Prime Owl for narrowly security/privacy-only review, secret handling, auth boundary checks, third-party AI data exposure, or protected data review.
 - Wise Owl Full Council: Logic Owl + Guardian Owl + Proof Owl in parallel, then Prime Owl for auth/authz, secrets/tokens, third-party AI/model provider context, protected student/customer/personal data, MCP/tool execution, filesystem/network boundaries, production writes, cloud/IaC permissions, persistence/migrations, concurrency/state machines, public API contracts, release/CI gates, or explicit Full Council.
 
-Parallel critic execution is prompt/runtime guidance where Codex supports it, not a local scheduler. Standard runs Logic Owl and Proof Owl together; Full Council runs Logic Owl, Guardian Owl, and Proof Owl together. Prime Owl runs only after selected critic packets are received or the run is declared partial.
+Parallel critic execution is prompt/runtime guidance where Codex supports it, not a local scheduler. Lite runs Logic Owl and then Prime Owl. Standard runs Logic Owl and Proof Owl together; Full Council runs Logic Owl, Guardian Owl, and Proof Owl together. Prime Owl runs only after selected critic packets are received or the run is declared partial.
 
 ## Compact Review Packet
 
@@ -112,7 +112,7 @@ Critic `notes` must be a list of non-empty strings. Critics must include this ex
 
 A raw critic pass packet with missing, empty, blank, null, or non-string `notes` entries is malformed.
 
-Prime Owl must return the Prime schema, even on pass:
+If critics returned no findings, Prime Owl must return this exact pass packet:
 
 ```json
 {
@@ -123,6 +123,23 @@ Prime Owl must return the Prime schema, even on pass:
     "No Wise Owl accepted findings remain.",
     "Proceed with final response, including checks run and execution issues."
   ]
+}
+```
+
+If every critic finding is rejected, the verdict is still `pass`; keep each rejected source in `rejected_findings` so accounting remains complete:
+
+```json
+{
+  "verdict": "pass",
+  "accepted_findings": [],
+  "rejected_findings": [
+    {
+      "source_ids": ["proof_owl:P-CI-001"],
+      "reason": "low_value",
+      "explanation": "The final response already records the exact command and output."
+    }
+  ],
+  "builder_instructions": ["No accepted findings remain."]
 }
 ```
 
@@ -340,8 +357,8 @@ Lite example:
 Mode: Wise Owl Lite
 Mode selection reason: low-risk README review requested
 Review status: complete-lite
-Selected reviewers: Prime Owl
-Model diversity: Prime Owl configured with gpt-5.5 high
+Selected reviewers: Logic Owl, Prime Owl
+Model diversity: Prime Owl gpt-5.5 high; Logic Owl gpt-5.4-mini high
 Prime Owl verdict: pass
 
 [REVIEW_PACKET]
@@ -352,7 +369,7 @@ Checks run: none
 Known assumptions: docs-only
 
 [CRITIC_RESULTS]
-Logic Owl: not spawned
+Logic Owl: complete
 Guardian Owl: not spawned
 Proof Owl: not spawned
 
@@ -410,6 +427,7 @@ python3 .agents/skills/wise-owl/scripts/wise_owl_validate_packet.py --type criti
 python3 .agents/skills/wise-owl/scripts/wise_owl_validate_packet.py --type prime --file prime.json
 python3 .agents/skills/wise-owl/scripts/wise_owl_validate_packet.py --type prime --file prime.json --critics critic1.json critic2.json critic3.json
 python3 .agents/skills/wise-owl/scripts/wise_owl_validate_packet.py --type prime --file prime.json --require-critics --critics critic1.json critic2.json
+python3 .agents/skills/wise-owl/scripts/wise_owl_validate_packet.py --type prime --file prime.json --mode lite --critics logic.json
 python3 .agents/skills/wise-owl/scripts/wise_owl_validate_packet.py --type prime --file prime.json --mode standard --critics logic.json proof.json
 python3 .agents/skills/wise-owl/scripts/wise_owl_validate_packet.py --type prime --file prime.json --mode security --critics guardian.json
 python3 .agents/skills/wise-owl/scripts/wise_owl_validate_packet.py --type prime --file prime.json --mode full --critics logic.json guardian.json proof.json

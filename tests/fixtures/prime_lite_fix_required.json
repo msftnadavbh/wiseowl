@@ -1,0 +1,16 @@
+{
+  "verdict": "fix_required",
+  "accepted_findings": [
+    {
+      "source_ids": ["logic_owl:L-LITE-BLOCK-001"],
+      "severity": "blocking",
+      "category": "correctness",
+      "issue": "The plan contradicts the requested output contract.",
+      "evidence": "logic_owl:L-LITE-BLOCK-001 cites the JSON requirement and conflicting plain-text plan.",
+      "impact": "The implementation would violate the user request.",
+      "required_builder_action": "Keep the required JSON output contract."
+    }
+  ],
+  "rejected_findings": [],
+  "builder_instructions": ["Fix the output contract before implementation."]
+}

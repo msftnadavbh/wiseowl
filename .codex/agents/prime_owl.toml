@@ -87,7 +87,7 @@ Evidence must be one non-empty string. Do not return evidence as an array.
 Use required_builder_action. Do not use required_fix.
 Do not add extra fields.
 
-If no accepted findings remain, return exactly:
+If critics returned no findings, return exactly:
 {
   "verdict": "pass",
   "accepted_findings": [],
@@ -96,6 +96,20 @@ If no accepted findings remain, return exactly:
     "No Wise Owl accepted findings remain.",
     "Proceed with final response, including checks run and execution issues."
   ]
+}
+
+If every critic finding is rejected, keep every rejected source_id in rejected_findings so source accounting remains complete. The verdict is still pass:
+{
+  "verdict": "pass",
+  "accepted_findings": [],
+  "rejected_findings": [
+    {
+      "source_ids": ["proof_owl:P-001"],
+      "reason": "low_value",
+      "explanation": "one non-empty string"
+    }
+  ],
+  "builder_instructions": ["No accepted findings remain."]
 }
 
 Rules:

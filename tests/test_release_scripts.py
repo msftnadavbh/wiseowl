@@ -6,6 +6,7 @@ import tempfile
 import unittest
 import zipfile
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -23,6 +24,78 @@ class ReleaseScriptTests(unittest.TestCase):
     def test_verify_release_passes_current_repo(self):
         verify_release = load_script("verify_release")
         self.assertEqual(verify_release.validate(ROOT), [])
+
+    def test_release_requires_core_test_modules(self):
+        verify_release = load_script("verify_release")
+        for relative in (
+            "tests/test_release_scripts.py",
+            "tests/test_wise_owl_install.py",
+            "tests/test_wise_owl_validate_packet.py",
+        ):
+            with self.subTest(relative=relative):
+                self.assertIn(relative, verify_release.REQUIRED_FILES)
+
+    def test_unit_test_checks_reject_zero_discovered_tests(self):
+        verify_release = load_script("verify_release")
+        with mock.patch.object(verify_release, "run_command", return_value=(0, "", "Ran 0 tests in 0.000s\n\nOK\n")):
+            errors = verify_release.unit_test_checks(ROOT)
+        self.assertEqual(errors, ["unit test discovery reported zero tests"])
+
+    def test_unit_test_checks_reject_missing_test_summary(self):
+        verify_release = load_script("verify_release")
+        with mock.patch.object(verify_release, "run_command", return_value=(0, "", "OK\n")):
+            errors = verify_release.unit_test_checks(ROOT)
+        self.assertEqual(errors, ["unit test discovery did not report a test count"])
+
+    def test_unit_test_checks_ignore_positive_summary_lookalike_on_stdout(self):
+        verify_release = load_script("verify_release")
+        with mock.patch.object(
+            verify_release,
+            "run_command",
+            return_value=(0, "Ran 123 tests in 1.234s\n", "OK\n"),
+        ):
+            errors = verify_release.unit_test_checks(ROOT)
+        self.assertEqual(errors, ["unit test discovery did not report a test count"])
+
+    def test_unit_test_checks_use_real_stderr_summary_over_stdout_lookalike(self):
+        verify_release = load_script("verify_release")
+        with mock.patch.object(
+            verify_release,
+            "run_command",
+            return_value=(
+                0,
+                "Ran 123 tests in 1.234s\n",
+                "progress: Ran 456 tests in 2.345s\nRan 0 tests in 0.000s\n\nOK\n",
+            ),
+        ):
+            errors = verify_release.unit_test_checks(ROOT)
+        self.assertEqual(errors, ["unit test discovery reported zero tests"])
+
+    def test_unit_test_checks_use_final_complete_stderr_summary(self):
+        verify_release = load_script("verify_release")
+        stderr = "Ran 0 tests in 0.000s\nRan 123 tests in 1.234s\n\nOK\n"
+        with mock.patch.object(verify_release, "run_command", return_value=(0, "", stderr)):
+            errors = verify_release.unit_test_checks(ROOT)
+        self.assertEqual(errors, [])
+
+    def test_unit_test_checks_ignore_incomplete_final_summary_lookalike(self):
+        verify_release = load_script("verify_release")
+        stderr = "Ran 123 tests in 1.234s and kept going\n\nOK\n"
+        with mock.patch.object(verify_release, "run_command", return_value=(0, "", stderr)):
+            errors = verify_release.unit_test_checks(ROOT)
+        self.assertEqual(errors, ["unit test discovery did not report a test count"])
+
+    def test_unit_test_checks_preserve_test_failures(self):
+        verify_release = load_script("verify_release")
+        with mock.patch.object(verify_release, "run_command", return_value=(1, "failed stdout", "failed stderr")):
+            errors = verify_release.unit_test_checks(ROOT)
+        self.assertEqual(errors, ["unit tests failed:\nfailed stdoutfailed stderr"])
+
+    def test_unit_test_checks_accept_positive_discovery_count(self):
+        verify_release = load_script("verify_release")
+        with mock.patch.object(verify_release, "run_command", return_value=(0, "", "Ran 123 tests in 1.234s\n\nOK\n")):
+            errors = verify_release.unit_test_checks(ROOT)
+        self.assertEqual(errors, [])
 
     def test_archive_excludes_generated_paths(self):
         build_release_archive = load_script("build_release_archive")

@@ -197,7 +197,7 @@ Valid Prime Owl packet:
 }
 ```
 
-Valid Prime Owl pass packet:
+If critics returned no findings, the valid Prime Owl pass packet is:
 
 ```json
 {
@@ -211,7 +211,26 @@ Valid Prime Owl pass packet:
 }
 ```
 
-Pass/no-finding Prime Owl results must still validate against the Prime Owl schema. A raw pass packet with missing `accepted_findings`, `rejected_findings`, or `builder_instructions` is malformed. A critic-style Prime pass packet with `role`, `findings`, or `notes` is also malformed.
+If every critic finding is rejected, `accepted_findings` remains empty and every rejected source stays in `rejected_findings`:
+
+```json
+{
+  "verdict": "pass",
+  "accepted_findings": [],
+  "rejected_findings": [
+    {
+      "source_ids": ["proof_owl:P-CI-001"],
+      "reason": "low_value",
+      "explanation": "The final response already records the exact command and output."
+    }
+  ],
+  "builder_instructions": ["No accepted findings remain."]
+}
+```
+
+Pass Prime Owl results must still validate against the Prime Owl schema. A raw pass packet with missing `accepted_findings`, `rejected_findings`, or `builder_instructions` is malformed. A critic-style Prime pass packet with `role`, `findings`, or `notes` is also malformed.
+
+All valid v0.1 packet shapes remain valid in v0.2. Packet-level `schema_version` is not required; versioning is deferred until a future bundle format needs it.
 
 Invalid Prime Owl packet:
 
@@ -288,7 +307,7 @@ Problems: generated thread name instead of stable role ID, ungrounded evidence, 
 
 Mode-aware validation requires the exact critic roles selected by the workflow:
 
-- `lite`: no critic packets
+- `lite`: `logic_owl`
 - `standard`: `logic_owl` and `proof_owl`
 - `security`: `guardian_owl`
 - `full`: `logic_owl`, `guardian_owl`, and `proof_owl`

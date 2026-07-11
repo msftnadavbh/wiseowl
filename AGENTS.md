@@ -6,12 +6,12 @@ Choose the cheapest mode that covers the risk. Escalate, never downgrade, when t
 
 Modes:
 - No Wise Owl: trivial typo, formatting, README-only, pure explanation, tiny copy change, or dependency metadata only when the user did not ask for review.
-- Wise Owl Lite: Prime Owl only for low-risk review, sanity-check, second-opinion, docs, prompts, README updates, small plans, small test-only changes, naming cleanup, or low-risk installer/docs polish.
+- Wise Owl Lite: Logic Owl, then Prime Owl for low-risk review, sanity-check, second-opinion, docs, prompts, README updates, small plans, small test-only changes, naming cleanup, or low-risk installer/docs polish.
 - Wise Owl Standard: Logic Owl + Proof Owl in parallel, then Prime Owl for normal implementation, non-security multi-file changes, API shape changes without sensitive data, test/CI changes, bug fixes, installer behavior, validator behavior, plugin packaging, or config merge logic.
 - Wise Owl Security: Guardian Owl, then Prime Owl for narrowly security/privacy-only review, secret handling, auth boundary checks, third-party AI data exposure, or protected data review.
 - Wise Owl Full Council: Logic Owl + Guardian Owl + Proof Owl in parallel, then Prime Owl for auth/authz, secrets/tokens, third-party AI/model provider context, protected student/customer/personal data, MCP/tool execution, filesystem/network boundaries, production writes, cloud/IaC permissions, persistence/migrations, concurrency/state machines, public API contracts, release/CI gates, or explicit Full Council.
 
-Lite mode must not pretend to be a full review: Selected reviewers is Prime Owl only; Logic Owl, Guardian Owl, and Proof Owl are `not spawned`; Review status is `complete-lite` when Prime Owl returns a valid packet.
+Lite mode must not pretend to be a full review: Selected reviewers are Logic Owl and Prime Owl; Guardian Owl and Proof Owl are `not spawned`. Review status is `complete-lite` only when both Logic Owl and Prime Owl return valid packets. If Logic Owl fails or returns a malformed packet, the review is partial and Prime Owl must not turn empty input into a completed Lite review.
 
 Wise Owl reviewers are read-only. The builder owns all edits. Wise Owl remains a lightweight Codex skill + custom-agent workflow with validator support, fixtures, docs, and installer behavior; do not add runtime automation, background hooks, daemons, custom orchestrators, direct model API calls, or scheduling tests.
 

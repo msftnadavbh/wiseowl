@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -21,6 +22,34 @@ MANIFEST_NAME = ".wise-owl-install.json"
 MANIFEST_SCHEMA_VERSION = 1
 
 AGENTS_POLICY = """## Wise Owl Review Policy
+
+Use the `wise-owl` skill for non-trivial review, finalization, hardening, second-opinion, or stuck-debug tasks.
+
+Choose the cheapest mode that covers the risk. Escalate, never downgrade, when the task touches security, privacy, tool execution, data boundaries, auth, secrets, protected data, filesystem/network boundaries, production writes, persistence, migrations, concurrency, public API contracts, or release gates.
+
+Modes:
+- No Wise Owl: trivial typo, formatting, README-only, pure explanation, tiny copy change, or dependency metadata only when the user did not ask for review.
+- Wise Owl Lite: Logic Owl, then Prime Owl for low-risk review, sanity-check, second-opinion, docs, prompts, README updates, small plans, small test-only changes, naming cleanup, or low-risk installer/docs polish.
+- Wise Owl Standard: Logic Owl + Proof Owl in parallel, then Prime Owl for normal implementation, non-security multi-file changes, API shape changes without sensitive data, test/CI changes, bug fixes, installer behavior, validator behavior, plugin packaging, or config merge logic.
+- Wise Owl Security: Guardian Owl, then Prime Owl for narrowly security/privacy-only review, secret handling, auth boundary checks, third-party AI data exposure, or protected data review.
+- Wise Owl Full Council: Logic Owl + Guardian Owl + Proof Owl in parallel, then Prime Owl for auth/authz, secrets/tokens, third-party AI/model provider context, protected student/customer/personal data, MCP/tool execution, filesystem/network boundaries, production writes, cloud/IaC permissions, persistence/migrations, concurrency/state machines, public API contracts, release/CI gates, or explicit Full Council.
+
+Lite mode must not pretend to be a full review: Selected reviewers are Logic Owl and Prime Owl; Guardian Owl and Proof Owl are `not spawned`. Review status is `complete-lite` only when both Logic Owl and Prime Owl return valid packets. If Logic Owl fails or returns a malformed packet, the review is partial and Prime Owl must not turn empty input into a completed Lite review.
+
+Wise Owl reviewers are read-only. The builder owns all edits. Wise Owl remains a lightweight Codex skill + custom-agent workflow with validator support, fixtures, docs, and installer behavior; do not add runtime automation, background hooks, daemons, custom orchestrators, direct model API calls, or scheduling tests.
+
+Every Wise Owl final response must use the `[WISE_OWL_REVIEW]` bracket, include mode, mode selection reason, selected reviewers, model diversity, Prime Owl verdict, accepted findings, rejected findings, execution issues, and builder actions.
+
+Before spawning critics, finish the compact Review Packet. After `[PARALLEL_CRITIC_PHASE]` starts, do not perform unrelated repo inspection, extra repo reads, additional tests, ad hoc validation scripts, scope expansion, edits, or mutating commands while waiting for selected critics. If the packet is incomplete after spawn, mark the review partial/invalid or restart explicitly and report it under `[EXECUTION_ISSUES]`.
+
+Report model diversity honestly, for example `all selected reviewers configured with gpt-5.5`, `Prime Owl gpt-5.5 high; Logic Owl/Proof Owl gpt-5.4-mini high`, or `unavailable`.
+
+If any selected reviewer fails, times out, returns malformed JSON, fails packet validation, or cannot be closed cleanly, set `Review status: partial`. Do not claim Prime Owl adjudication if Prime Owl was not run.
+
+Empty bracket sections may be `none`.
+"""
+
+AGENTS_POLICY_V0_1 = """## Wise Owl Review Policy
 
 Use the `wise-owl` skill for non-trivial review, finalization, hardening, second-opinion, or stuck-debug tasks.
 
@@ -47,6 +76,11 @@ If any selected reviewer fails, times out, returns malformed JSON, fails packet 
 
 Empty bracket sections may be `none`.
 """
+
+AGENTS_POLICY_HEADING = re.compile(
+    r"^[ \t]{0,3}##[ \t]+wise[ \t]+owl[ \t]+review[ \t]+policy(?:[ \t]+#+)?[ \t]*$",
+    re.IGNORECASE,
+)
 
 
 def repo_root_from_script() -> Path:
@@ -136,9 +170,26 @@ def merge_config(existing: str) -> str:
     return "\n".join(lines[:next_section] + additions + lines[next_section:]) + "\n"
 
 
+def agents_policy_state(existing: str) -> str:
+    heading_count = sum(1 for line in existing.splitlines() if AGENTS_POLICY_HEADING.fullmatch(line))
+    if heading_count == 0:
+        return "absent"
+    if heading_count == 1 and existing.count(AGENTS_POLICY) == 1:
+        return "current"
+    if heading_count == 1 and existing.count(AGENTS_POLICY_V0_1) == 1:
+        return "v0.1"
+    return "conflict"
+
+
 def patch_agents_md(existing: str) -> str:
-    if "## Wise Owl review policy" in existing or "## Wise Owl Review Policy" in existing:
+    state = agents_policy_state(existing)
+    if state == "current":
         return existing if existing.endswith("\n") else existing + "\n"
+    if state == "v0.1":
+        upgraded = existing.replace(AGENTS_POLICY_V0_1, AGENTS_POLICY, 1)
+        return upgraded if upgraded.endswith("\n") else upgraded + "\n"
+    if state == "conflict":
+        raise ValueError("AGENTS.md contains a customized or ambiguous Wise Owl Review Policy; refusing to overwrite it")
     prefix = existing.rstrip()
     return f"{prefix}\n\n{AGENTS_POLICY}" if prefix else AGENTS_POLICY
 
@@ -522,6 +573,14 @@ def check_install(
             if "[agents]" not in text or "max_threads" not in text or "max_depth" not in text:
                 errors.append(f"config is missing [agents] max_threads/max_depth: {config_path}")
 
+    agents_md = repo_root / "AGENTS.md"
+    if scope == "repo" and agents_md.is_file():
+        policy_state = agents_policy_state(agents_md.read_text(encoding="utf-8"))
+        if policy_state == "v0.1":
+            errors.append(f"obsolete v0.1 Wise Owl Review Policy in {agents_md}; rerun with --patch-agents-md")
+        elif policy_state == "conflict":
+            errors.append(f"customized or ambiguous Wise Owl Review Policy in {agents_md}; review it manually")
+
     manifest_path = skill_dir / MANIFEST_NAME
     manifest_safe = True
     if manifest_path.is_symlink():
@@ -684,18 +743,22 @@ def main() -> int:
                 print(f"- {path}", file=sys.stderr)
         print("Shared config.toml and AGENTS.md entries were left unchanged.")
         return 1 if preserved else 0
-    changed = install(
-        args.scope,
-        repo_root,
-        codex_home,
-        user_skills_home=user_skills_home,
-        dry_run=args.dry_run,
-        force=args.force,
-        patch_agents=args.patch_agents_md,
-        model=args.model,
-        prime_model=args.prime_model,
-        template_root=template_root,
-    )
+    try:
+        changed = install(
+            args.scope,
+            repo_root,
+            codex_home,
+            user_skills_home=user_skills_home,
+            dry_run=args.dry_run,
+            force=args.force,
+            patch_agents=args.patch_agents_md,
+            model=args.model,
+            prime_model=args.prime_model,
+            template_root=template_root,
+        )
+    except (FileExistsError, ValueError) as exc:
+        print(f"Wise Owl install failed: {exc}", file=sys.stderr)
+        return 1
     if args.dry_run:
         print(f"Wise Owl dry run for {args.scope} scope.")
         print_target_summary(args.scope, repo_root, codex_home, user_skills_home)

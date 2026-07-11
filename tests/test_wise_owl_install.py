@@ -1,3 +1,4 @@
+import hashlib
 import importlib.util
 import json
 import shutil
@@ -179,6 +180,21 @@ class WiseOwlInstallTests(unittest.TestCase):
         (self.codex_home / "agents" / "proof_owl.toml").unlink()
         errors = self.installer.check_install("user", self.root, self.codex_home, self.user_skills_home)
         self.assertTrue(any("missing agent TOML: proof_owl.toml" in error for error in errors), errors)
+
+    def test_user_check_ignores_repository_agents_policy(self):
+        self.installer.install("user", self.root, self.codex_home, template_root=ROOT)
+        agents_md = self.root / "AGENTS.md"
+
+        for policy in (
+            self.installer.AGENTS_POLICY_V0_1,
+            "## WISE OWL REVIEW POLICY\n\nKeep my custom routing rules.\n",
+        ):
+            with self.subTest(policy=policy.splitlines()[0]):
+                agents_md.write_text(policy, encoding="utf-8")
+                self.assertEqual(
+                    self.installer.check_install("user", self.root, self.codex_home, self.user_skills_home),
+                    [],
+                )
 
     def test_check_fails_when_managed_manifest_is_missing(self):
         self.installer.install("user", self.root, self.codex_home, template_root=ROOT)
@@ -657,6 +673,131 @@ class WiseOwlInstallTests(unittest.TestCase):
         self.assertEqual(once, twice)
         self.assertEqual(once.count("## Wise Owl Review Policy"), 1)
 
+    def test_agents_md_patch_upgrades_exact_generated_v01_policy(self):
+        legacy_policy = self.installer.AGENTS_POLICY_V0_1
+        self.assertEqual(
+            hashlib.sha256(legacy_policy.encode("utf-8")).hexdigest(),
+            "50a77fe8d2b737c73d59ad5b56db36b302efdc5f171067db130adb9c8130c7d4",
+        )
+        existing = f"# Project\n\n{legacy_policy}\n## User Rules\n\nKeep this.\n"
+        agents_md = self.root / "AGENTS.md"
+        agents_md.write_text(existing, encoding="utf-8")
+
+        changed = self.installer.install(
+            "repo",
+            self.root,
+            self.codex_home,
+            patch_agents=True,
+            template_root=ROOT,
+        )
+        patched = agents_md.read_text(encoding="utf-8")
+
+        self.assertIn(agents_md, changed)
+        self.assertEqual(patched, existing.replace(legacy_policy, self.installer.AGENTS_POLICY))
+        self.assertEqual(patched.count("## Wise Owl Review Policy"), 1)
+        self.assertNotIn("Wise Owl Lite: Prime Owl only", patched)
+        self.assertIn("## User Rules\n\nKeep this.\n", patched)
+        self.assertEqual(self.installer.check_install("repo", self.root, self.codex_home), [])
+
+    def test_agents_md_patch_rejects_customized_policy_without_writing(self):
+        agents_md = self.root / "AGENTS.md"
+        customized = "# Project\n\n## Wise Owl Review Policy\n\nKeep my custom routing rules.\n"
+        agents_md.write_text(customized, encoding="utf-8")
+
+        with self.assertRaisesRegex(ValueError, "customized or ambiguous Wise Owl Review Policy"):
+            self.installer.install(
+                "repo",
+                self.root,
+                self.codex_home,
+                patch_agents=True,
+                template_root=ROOT,
+            )
+
+        self.assertEqual(agents_md.read_text(encoding="utf-8"), customized)
+        self.assertFalse((self.root / ".agents" / "skills" / "wise-owl" / "SKILL.md").exists())
+        self.assertFalse((self.root / ".codex" / "config.toml").exists())
+
+    def test_agents_md_patch_rejects_markdown_equivalent_policy_headings_without_writing(self):
+        agents_md = self.root / "AGENTS.md"
+        headings = (
+            "## WISE OWL REVIEW POLICY",
+            "##  Wise Owl Review Policy",
+            "## Wise Owl Review Policy ##",
+        )
+        for heading in headings:
+            with self.subTest(heading=heading):
+                customized = f"# Project\n\n{heading}\n\nKeep my custom routing rules.\n"
+                agents_md.write_text(customized, encoding="utf-8")
+
+                with self.assertRaisesRegex(ValueError, "customized or ambiguous Wise Owl Review Policy"):
+                    self.installer.install(
+                        "repo",
+                        self.root,
+                        self.codex_home,
+                        patch_agents=True,
+                        template_root=ROOT,
+                    )
+
+                self.assertEqual(agents_md.read_text(encoding="utf-8"), customized)
+                self.assertFalse((self.root / ".agents" / "skills" / "wise-owl" / "SKILL.md").exists())
+                self.assertFalse((self.root / ".codex" / "config.toml").exists())
+
+    def test_patch_agents_cli_reports_customized_policy_conflict_without_traceback(self):
+        agents_md = self.root / "AGENTS.md"
+        customized = "## Wise Owl Review Policy\n\nKeep my custom routing rules.\n"
+        agents_md.write_text(customized, encoding="utf-8")
+
+        result = subprocess.run(
+            [sys.executable, str(INSTALLER), "--scope", "repo", "--patch-agents-md"],
+            cwd=self.root,
+            env={"WISE_OWL_TEMPLATE_ROOT": str(ROOT)},
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("Wise Owl install failed:", result.stderr)
+        self.assertIn("customized or ambiguous Wise Owl Review Policy", result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
+        self.assertEqual(agents_md.read_text(encoding="utf-8"), customized)
+
+    def test_patch_agents_cli_rejects_markdown_equivalent_policy_headings_without_writing(self):
+        agents_md = self.root / "AGENTS.md"
+        headings = (
+            "## WISE OWL REVIEW POLICY",
+            "##  Wise Owl Review Policy",
+            "## Wise Owl Review Policy ##",
+        )
+        for heading in headings:
+            with self.subTest(heading=heading):
+                customized = f"{heading}\n\nKeep my custom routing rules.\n"
+                agents_md.write_text(customized, encoding="utf-8")
+
+                result = subprocess.run(
+                    [sys.executable, str(INSTALLER), "--scope", "repo", "--patch-agents-md"],
+                    cwd=self.root,
+                    env={"WISE_OWL_TEMPLATE_ROOT": str(ROOT)},
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+
+                self.assertEqual(result.returncode, 1)
+                self.assertIn("Wise Owl install failed:", result.stderr)
+                self.assertIn("customized or ambiguous Wise Owl Review Policy", result.stderr)
+                self.assertNotIn("Traceback", result.stderr)
+                self.assertEqual(agents_md.read_text(encoding="utf-8"), customized)
+
+    def test_check_rejects_obsolete_prime_only_lite_policy(self):
+        self.installer.install("repo", self.root, self.codex_home, template_root=ROOT)
+        agents_md = self.root / "AGENTS.md"
+        agents_md.write_text(self.installer.AGENTS_POLICY_V0_1, encoding="utf-8")
+
+        errors = self.installer.check_install("repo", self.root, self.codex_home)
+
+        self.assertTrue(any("obsolete v0.1 Wise Owl Review Policy" in error for error in errors), errors)
+
     def test_plugin_skill_matches_repo_skill(self):
         repo_skill = ROOT / ".agents" / "skills" / "wise-owl" / "SKILL.md"
         plugin_skill = ROOT / "wise-owl-plugin" / "skills" / "wise-owl" / "SKILL.md"
@@ -714,10 +855,12 @@ class WiseOwlInstallTests(unittest.TestCase):
             self.assertIn("do not add extra top-level fields", content)
 
         prime = (ROOT / ".codex" / "agents" / "prime_owl.toml").read_text()
-        self.assertIn("If no accepted findings remain, return exactly:", prime)
+        self.assertIn("If critics returned no findings, return exactly:", prime)
         self.assertIn('"accepted_findings": []', prime)
         self.assertIn('"rejected_findings": []', prime)
         self.assertIn('"No Wise Owl accepted findings remain."', prime)
+        self.assertIn("If every critic finding is rejected", prime)
+        self.assertIn("keep every rejected source_id in rejected_findings", prime)
         self.assertIn("do not return role", prime)
         self.assertIn("do not omit accepted_findings, rejected_findings, or builder_instructions", prime)
 
@@ -775,6 +918,8 @@ class WiseOwlInstallTests(unittest.TestCase):
             "Choose the cheapest mode that covers the risk",
             "Escalate, never downgrade",
             "Lite is the default for low-risk review/planning requests",
+            "Wise Owl Lite: Logic Owl, then Prime Owl",
+            "complete-lite only when both Logic Owl and Prime Owl return valid packets",
             "complete-lite",
             "not spawned",
             "Logic Owl + Proof Owl in parallel",
@@ -802,6 +947,26 @@ class WiseOwlInstallTests(unittest.TestCase):
         ]
         for text in required:
             self.assertIn(text, skill)
+
+    def test_lite_and_prime_pass_contracts_match_across_public_surfaces(self):
+        surfaces = {
+            "AGENTS.md": (ROOT / "AGENTS.md").read_text(),
+            "SKILL.md": (ROOT / ".agents" / "skills" / "wise-owl" / "SKILL.md").read_text(),
+            "installer policy": self.installer.AGENTS_POLICY,
+            "workflow docs": (ROOT / "docs" / "wise-owl.md").read_text(),
+        }
+        for name, content in surfaces.items():
+            with self.subTest(name=name):
+                self.assertIn("Wise Owl Lite: Logic Owl, then Prime Owl", content)
+                self.assertNotIn("Wise Owl Lite: Prime Owl only", content)
+
+        readme = (ROOT / "README.md").read_text()
+        schema = (ROOT / ".agents" / "skills" / "wise-owl" / "references" / "finding-schema.md").read_text()
+        changelog = (ROOT / "CHANGELOG.md").read_text()
+        self.assertIn("| Lite | Logic Owl + Prime Owl |", readme)
+        self.assertIn("If critics returned no findings", schema)
+        self.assertIn("If every critic finding is rejected", schema)
+        self.assertIn("all valid v0.1 packet shapes remain valid", changelog)
 
     def test_agents_md_documents_router(self):
         agents = (ROOT / "AGENTS.md").read_text()
