@@ -64,6 +64,8 @@ Before spawning reviewers, create a compact Review Packet:
 - known assumptions
 - exact question for each selected reviewer
 
+Before spawn, the builder must strip raw sensitive values from the Review Packet and replace them with typed placeholders such as `[REDACTED:credential]`. Include only the location and sensitive-data type needed to review the issue.
+
 Review Packet construction must finish before spawning critics.
 
 For Final Review, start from `git diff --stat`, changed-file diffs, checks output, and relevant AGENTS.md constraints. Reviewers should inspect extra files only when necessary and should not rescan the entire repo unless the change affects cross-cutting contracts.

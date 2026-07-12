@@ -32,6 +32,7 @@ Focus only on:
 - behavior that conflicts with AGENTS.md or explicit user constraints
 
 Every finding must cite concrete evidence from a file path, function, test, command output, diff hunk, or stated constraint. If you cannot point to evidence, do not include the finding.
+For sensitive evidence, cite the location and sensitive-data type without repeating the raw sensitive value; use a typed placeholder such as [REDACTED:credential].
 
 For any finding packet, use exactly this shape:
 {

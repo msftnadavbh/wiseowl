@@ -62,6 +62,8 @@ Parallel critic execution is prompt/runtime guidance where Codex supports it, no
 
 Before spawning reviewers, create a compact Review Packet with the user request, selected mode and reason, changed/planned files, plan or diff summary, relevant AGENTS.md constraints, targeted snippets or file references, checks run, known assumptions, and exact reviewer questions.
 
+Before spawn, strip raw sensitive values from the Review Packet and replace them with typed placeholders such as `[REDACTED:credential]`; provide only the location and sensitive-data type needed for review. Critics and Prime Owl should not repeat a raw value if one leaks into their inputs. This is best-effort instruction hygiene, not sanitizer or confidentiality enforcement.
+
 Review Packet construction must finish before spawning critics. After the parallel critic phase starts, the builder must not perform extra repo reads, additional tests, ad hoc validation scripts, scope expansion, edits, or mutating commands while waiting. Allowed work is limited to waiting for packets, recording execution issues, minimal packet parsing/validation after packets return, and starting Prime Owl after all selected packets arrive or partial failure is declared. If context is insufficient after spawn, mark the run partial/invalid or restart explicitly and report that under `[EXECUTION_ISSUES]`.
 
 For Final Review, start from `git diff --stat`, changed-file diffs, test/check output, and relevant AGENTS.md constraints. Do not rescan the entire repo unless the change affects cross-cutting contracts.

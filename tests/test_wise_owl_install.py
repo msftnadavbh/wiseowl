@@ -884,6 +884,34 @@ class WiseOwlInstallTests(unittest.TestCase):
         self.assertIn("Allowed categories: correctness, security, testability, maintainability, scope, ci", prime)
         self.assertIn("Do not use required_fix", prime)
 
+    def test_review_evidence_guidance_is_privacy_minimized(self):
+        placeholder = "[REDACTED:credential]"
+        for filename in ("logic_owl.toml", "guardian_owl.toml", "proof_owl.toml"):
+            content = (ROOT / ".codex" / "agents" / filename).read_text()
+            with self.subTest(filename=filename):
+                self.assertIn("location and sensitive-data type", content)
+                self.assertIn("without repeating the raw sensitive value", content)
+                self.assertIn(placeholder, content)
+
+        prime = (ROOT / ".codex" / "agents" / "prime_owl.toml").read_text()
+        self.assertIn("Do not preserve or repeat leaked sensitive values", prime)
+        self.assertIn(placeholder, prime)
+
+        surfaces = {
+            "SKILL.md": (ROOT / ".agents" / "skills" / "wise-owl" / "SKILL.md").read_text(),
+            "AGENTS.md": (ROOT / "AGENTS.md").read_text(),
+            "installer policy": self.installer.AGENTS_POLICY,
+        }
+        for name, content in surfaces.items():
+            with self.subTest(name=name):
+                self.assertIn("Before spawn, the builder must strip raw sensitive values", content)
+                self.assertIn(placeholder, content)
+
+        docs = (ROOT / "docs" / "wise-owl.md").read_text()
+        self.assertIn("best-effort instruction hygiene", docs)
+        self.assertIn("not sanitizer or confidentiality enforcement", docs)
+        self.assertIn(placeholder, docs)
+
     def test_installer_warns_for_legacy_agent_files(self):
         legacy = self.root / ".codex" / "agents" / "owl_guard.toml"
         legacy.parent.mkdir(parents=True)
