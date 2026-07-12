@@ -51,7 +51,7 @@ Build the local archive only after the gate passes:
 python3 scripts/build_release_archive.py
 ```
 
-The version comes from `wise-owl-plugin/.codex-plugin/plugin.json`, so the current output is `dist/wise-owl-v0.2.0.zip`. Inspect the archive before tagging.
+The version comes from `wise-owl-plugin/.codex-plugin/plugin.json`, so the current outputs are `dist/wise-owl-v0.2.0.zip` and `dist/wise-owl-v0.2.0.zip.sha256`. Archive entries use fixed metadata for reproducible builds, and symlinks are excluded so files outside the release root cannot be copied into the archive. Verify the sidecar with `(cd dist && shasum -a 256 -c wise-owl-v0.2.0.zip.sha256)`, then inspect the archive before tagging.
 
 ## Dogfood
 
@@ -61,7 +61,7 @@ Run Wise Owl Standard on the final diff. Validate Logic Owl and Proof Owl packet
 
 - Resolve the `v0.2.0 - Unreleased` changelog heading with the release date.
 - Run `python3 scripts/verify_release.py`.
-- Build and inspect `dist/wise-owl-v0.2.0.zip`.
+- Build, checksum-verify, and inspect `dist/wise-owl-v0.2.0.zip`.
 - Confirm `git status` contains only intended release changes.
 - Commit and tag only after review.
 - Push only the intended branch and `v0.2.0` tag.

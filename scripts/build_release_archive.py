@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import subprocess
 import sys
@@ -15,7 +16,7 @@ ROOT_FILES = ("README.md", "install.py", "LICENSE", "CHANGELOG.md", "AGENTS.md",
 ROOT_DIRS = (".agents", ".github", "docs", "tests", "scripts", "wise-owl-plugin", "assets")
 CODEX_FILES = (".codex/config.toml",)
 CODEX_AGENT_DIR = Path(".codex/agents")
-EXCLUDED_PARTS = {".git", "dist", "build", "coverage", "__pycache__", ".pytest_cache", ".venv", "venv", "node_modules", "tmp", "temp"}
+EXCLUDED_PARTS = {".git", "dist", "build", "coverage", "superpowers", "__pycache__", ".pytest_cache", ".venv", "venv", "node_modules", "tmp", "temp"}
 EXCLUDED_SUFFIXES = {".pyc", ".pyo", ".log"}
 EXCLUDED_NAMES = {".DS_Store", ".wise-owl-install.json"}
 
@@ -37,12 +38,28 @@ def archive_name(root: Path) -> str:
     return f"wise-owl-v{release_version(root)}.zip"
 
 
-def should_include(path: Path) -> bool:
-    if any(part in EXCLUDED_PARTS for part in path.parts):
+def should_include(path: Path, root: Path | None = None) -> bool:
+    try:
+        parts = path.relative_to(root).parts if root is not None else path.parts
+    except ValueError:
+        return False
+    if any(part in EXCLUDED_PARTS for part in parts):
         return False
     if path.name in EXCLUDED_NAMES or path.suffix in EXCLUDED_SUFFIXES:
         return False
     if path.name.startswith(".env"):
+        return False
+    if root is not None:
+        current = root
+        for part in parts:
+            current /= part
+            if current.is_symlink():
+                return False
+        try:
+            path.resolve().relative_to(root.resolve())
+        except ValueError:
+            return False
+    elif path.is_symlink():
         return False
     return path.is_file()
 
@@ -51,19 +68,19 @@ def iter_files(root: Path) -> list[Path]:
     files: set[Path] = set()
     for relative in ROOT_FILES + CODEX_FILES:
         path = root / relative
-        if should_include(path):
+        if should_include(path, root):
             files.add(path.relative_to(root))
     agents_dir = root / CODEX_AGENT_DIR
     if agents_dir.is_dir():
         for path in agents_dir.rglob("*"):
-            if should_include(path):
+            if should_include(path, root):
                 files.add(path.relative_to(root))
     for relative in ROOT_DIRS:
         base = root / relative
         if not base.exists():
             continue
         for path in base.rglob("*"):
-            if should_include(path):
+            if should_include(path, root):
                 files.add(path.relative_to(root))
     return sorted(files, key=lambda path: path.as_posix())
 
@@ -80,7 +97,22 @@ def build_archive(root: Path, output_dir: Path) -> Path:
             info.external_attr = mode << 16
             info.compress_type = zipfile.ZIP_DEFLATED
             handle.writestr(info, source.read_bytes())
+    write_checksum(archive)
     return archive
+
+
+def archive_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def write_checksum(path: Path) -> Path:
+    checksum = path.with_name(f"{path.name}.sha256")
+    checksum.write_text(f"{archive_sha256(path)}  {path.name}\n", encoding="utf-8")
+    return checksum
 
 
 def main(argv: list[str] | None = None) -> int:

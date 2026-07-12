@@ -2,6 +2,7 @@
 
 ## v0.2.0 - Unreleased
 
+- Made release archives reproducible, excluded symlinks and out-of-root paths, and added SHA-256 sidecars.
 - Added exact non-pass JSON contracts for every reviewer and Prime Owl.
 - Added critic verdict semantics, mode-aware reviewer-set validation, and duplicate-role rejection.
 - Changed Lite to Logic Owl followed by Prime Owl so pass, caution, and fix-required results have accountable critic sources.

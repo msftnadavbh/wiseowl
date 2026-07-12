@@ -193,6 +193,67 @@ class ReleaseScriptTests(unittest.TestCase):
                 timestamps = {item.date_time for item in handle.infolist()}
         self.assertEqual(timestamps, {(1980, 1, 1, 0, 0, 0)})
 
+    def test_archive_rejects_symlinks(self):
+        build_release_archive = load_script("build_release_archive")
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            root = base / "tmp" / "release"
+            (root / "docs").mkdir(parents=True)
+            internal = root / "docs" / "internal.md"
+            internal.write_text("internal", encoding="utf-8")
+            external = base / "external.md"
+            external.write_text("external", encoding="utf-8")
+            (root / "docs" / "internal-link.md").symlink_to(internal)
+            (root / "docs" / "external-link.md").symlink_to(external)
+
+            files = {path.as_posix() for path in build_release_archive.iter_files(root)}
+
+        self.assertIn("docs/internal.md", files)
+        self.assertNotIn("docs/internal-link.md", files)
+        self.assertNotIn("docs/external-link.md", files)
+
+    def test_archive_rejects_symlinked_directories(self):
+        build_release_archive = load_script("build_release_archive")
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            for name in ("internal", "external"):
+                with self.subTest(name=name):
+                    root = base / name / "release"
+                    root.mkdir(parents=True)
+                    target = root / "content" if name == "internal" else base / "outside"
+                    target.mkdir(parents=True)
+                    (target / "linked.md").write_text(name, encoding="utf-8")
+                    (root / "docs").symlink_to(target, target_is_directory=True)
+
+                    files = {path.as_posix() for path in build_release_archive.iter_files(root)}
+
+                    self.assertNotIn("docs/linked.md", files)
+
+    def test_archive_build_is_reproducible_and_checksummed(self):
+        build_release_archive = load_script("build_release_archive")
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            root = base / "release"
+            manifest = root / "wise-owl-plugin" / ".codex-plugin" / "plugin.json"
+            manifest.parent.mkdir(parents=True)
+            manifest.write_text('{"version": "0.2.0"}', encoding="utf-8")
+            (root / "README.md").write_text("Wise Owl\n", encoding="utf-8")
+
+            first = build_release_archive.build_archive(root, base / "first")
+            second = build_release_archive.build_archive(root, base / "second")
+            first_checksum = first.with_name(f"{first.name}.sha256")
+            second_checksum = second.with_name(f"{second.name}.sha256")
+
+            self.assertEqual(first.read_bytes(), second.read_bytes())
+            self.assertEqual(
+                first_checksum.read_text(encoding="utf-8"),
+                f"{build_release_archive.archive_sha256(first)}  {first.name}\n",
+            )
+            self.assertEqual(
+                second_checksum.read_text(encoding="utf-8"),
+                f"{build_release_archive.archive_sha256(second)}  {second.name}\n",
+            )
+
     def test_installer_smoke_is_confined_to_supplied_sandbox(self):
         verify_release = load_script("verify_release")
         with tempfile.TemporaryDirectory() as directory:
