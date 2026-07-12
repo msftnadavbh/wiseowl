@@ -41,6 +41,8 @@ python3 install.py
 python3 install.py --check
 ```
 
+For automation, `python3 install.py --check --json` writes one privacy-safe JSON document to stdout. It reports stable issue codes, installed/candidate versions, update availability, and a suggested action without exposing local absolute paths or raw parser errors.
+
 Restart or reopen Codex, then ask:
 
 ```text

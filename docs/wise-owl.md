@@ -182,6 +182,8 @@ python3 .agents/skills/wise-owl/scripts/wise_owl_install.py --scope user
 python3 .agents/skills/wise-owl/scripts/wise_owl_install.py --scope user --check
 ```
 
+Add `--json` to `--check` for a single privacy-safe automation result. The result includes health, scope, installed and separately bundled candidate versions, update availability, sorted issue codes, allowlisted issue objects, and one of `install`, `upgrade`, `repair`, `review`, or `none`. It never serializes absolute paths, invalid manifest keys, control characters, or raw exceptions. Checks also report manifest scope mismatch and legacy `owl_*` agent files. `--json` without `--check` is an argument error.
+
 Override paths for testing or unusual local Codex layouts:
 
 ```bash

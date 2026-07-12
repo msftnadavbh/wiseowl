@@ -30,6 +30,8 @@ python3 install.py
 python3 install.py --check
 ```
 
+Machine-readable health checks use `python3 install.py --check --json`. Normal check success and failure emit exactly one JSON document on stdout and leave stderr empty; the exit code remains `0` for healthy and `1` for unhealthy. The document contains only allowlisted fields and stable issue codes/managed relative subjects. Candidate update comparison is available only when the invoking distribution separately bundles a three-part numeric version; an installed copy does not treat its own install manifest as a candidate.
+
 The shortcut defaults to `--scope user` and delegates to the same hardened installer below. Python 3.10+ is supported, with no third-party Python packages required.
 
 Dry run:

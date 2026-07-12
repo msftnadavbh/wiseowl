@@ -9,6 +9,7 @@ import json
 import os
 import re
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +21,13 @@ AGENT_NAMES = ("logic_owl", "guardian_owl", "proof_owl", "prime_owl")
 LEGACY_AGENT_NAMES = ("owl_eyes", "owl_guard", "owl_proof")
 MANIFEST_NAME = ".wise-owl-install.json"
 MANIFEST_SCHEMA_VERSION = 1
+
+
+@dataclass(frozen=True)
+class CheckIssue:
+    code: str
+    message: str
+    subject: str | None = None
 
 AGENTS_POLICY = """## Wise Owl Review Policy
 
@@ -133,6 +141,22 @@ def package_version(template_root: Path) -> str:
         if isinstance(version, str) and version.strip():
             return version
     return "development"
+
+
+def bundled_candidate_version(template_root: Path) -> str | None:
+    """Return only a version bundled with the invoking distribution."""
+    for path in (
+        template_root / "wise-owl-plugin" / ".codex-plugin" / "plugin.json",
+        template_root / ".codex-plugin" / "plugin.json",
+    ):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        version = data.get("version") if isinstance(data, dict) else None
+        if isinstance(version, str) and version.strip() and not any(ord(char) < 32 or ord(char) == 127 for char in version):
+            return version
+    return None
 
 
 def merge_config(existing: str) -> str:
@@ -520,103 +544,177 @@ def parse_toml(path: Path) -> dict[str, Any] | None:
         return {}
 
 
+def collect_check_issues(
+    scope: str,
+    repo_root: Path,
+    codex_home: Path,
+    user_skills_home: Path | None = None,
+) -> list[CheckIssue]:
+    issues: list[CheckIssue] = []
+    skill_dir, agents_dir, config_path = target_paths(scope, repo_root, codex_home, user_skills_home)
+    allowed_roots = allowed_install_roots(scope, repo_root, codex_home, user_skills_home)
+    skill_path = skill_dir / "SKILL.md"
+    if not skill_path.is_file():
+        issues.append(CheckIssue("missing_skill", f"missing skill: {skill_path}", "SKILL.md"))
+    else:
+        skill = skill_path.read_text(encoding="utf-8")
+        frontmatter = skill.split("---", 2)[1] if skill.count("---") >= 2 else ""
+        if "name: wise-owl" not in frontmatter or "description:" not in frontmatter:
+            issues.append(CheckIssue("invalid_skill_frontmatter", f"invalid skill frontmatter: {skill_path}", "SKILL.md"))
+
+    for name in AGENT_NAMES:
+        path = agents_dir / f"{name}.toml"
+        if not path.is_file():
+            issues.append(CheckIssue("missing_agent", f"missing agent TOML: {path.name}", path.name))
+            continue
+        parsed = parse_toml(path)
+        if parsed == {}:
+            issues.append(CheckIssue("invalid_agent_toml", f"invalid agent TOML: {path.name}", path.name))
+        elif parsed is not None:
+            if parsed.get("name") != name:
+                issues.append(CheckIssue("agent_name_mismatch", f"agent name mismatch: {path.name}", path.name))
+            if parsed.get("sandbox_mode") != "read-only":
+                issues.append(CheckIssue("agent_not_read_only", f"agent is not read-only: {path.name}", path.name))
+            if not isinstance(parsed.get("developer_instructions"), str) or not parsed["developer_instructions"].strip():
+                issues.append(CheckIssue("missing_developer_instructions", f"missing developer_instructions: {path.name}", path.name))
+        else:
+            text = path.read_text(encoding="utf-8")
+            if f'name = "{name}"' not in text or 'sandbox_mode = "read-only"' not in text or "developer_instructions" not in text:
+                issues.append(CheckIssue("invalid_agent_toml", f"invalid agent TOML: {path.name}", path.name))
+
+    for path in legacy_agent_paths(agents_dir):
+        issues.append(CheckIssue("legacy_agent_present", f"legacy Wise Owl agent TOML is present: {path.name}", path.name))
+
+    if not config_path.is_file():
+        issues.append(CheckIssue("missing_config", f"missing config: {config_path}", "config.toml"))
+    else:
+        config = parse_toml(config_path)
+        if config == {}:
+            issues.append(CheckIssue("invalid_config_toml", f"invalid config TOML: {config_path}", "config.toml"))
+        elif config is not None:
+            agents = config.get("agents")
+            if not isinstance(agents, dict) or "max_threads" not in agents or "max_depth" not in agents:
+                issues.append(CheckIssue("incomplete_agents_config", f"config is missing [agents] max_threads/max_depth: {config_path}", "config.toml"))
+        else:
+            text = config_path.read_text(encoding="utf-8")
+            if "[agents]" not in text or "max_threads" not in text or "max_depth" not in text:
+                issues.append(CheckIssue("incomplete_agents_config", f"config is missing [agents] max_threads/max_depth: {config_path}", "config.toml"))
+
+    agents_md = repo_root / "AGENTS.md"
+    if scope == "repo" and agents_md.is_file():
+        policy_state = agents_policy_state(agents_md.read_text(encoding="utf-8"))
+        if policy_state == "v0.1":
+            issues.append(CheckIssue("obsolete_agents_policy", f"obsolete v0.1 Wise Owl Review Policy in {agents_md}; rerun with --patch-agents-md", "AGENTS.md"))
+        elif policy_state == "conflict":
+            issues.append(CheckIssue("custom_agents_policy", f"customized or ambiguous Wise Owl Review Policy in {agents_md}; review it manually", "AGENTS.md"))
+
+    manifest_path = skill_dir / MANIFEST_NAME
+    manifest_safe = True
+    if manifest_path.is_symlink():
+        issues.append(CheckIssue("unsafe_manifest", f"managed install manifest must not be a symlink: {manifest_path}", MANIFEST_NAME))
+        manifest_safe = False
+    else:
+        try:
+            ensure_safe_write_targets({manifest_path: ""}, allowed_roots)
+        except ValueError as exc:
+            issues.append(CheckIssue("unsafe_manifest", str(exc), MANIFEST_NAME))
+            manifest_safe = False
+    if manifest_safe and not manifest_path.is_file():
+        issues.append(CheckIssue("missing_manifest", f"missing managed install manifest: {manifest_path}", MANIFEST_NAME))
+    elif manifest_safe:
+        try:
+            manifest = load_install_manifest(manifest_path)
+        except ValueError as exc:
+            issues.append(CheckIssue("invalid_manifest", str(exc), MANIFEST_NAME))
+        else:
+            if manifest.get("scope") != scope:
+                issues.append(CheckIssue("manifest_scope_mismatch", f"managed install manifest scope does not match {scope}: {manifest_path}", MANIFEST_NAME))
+            for key, expected_digest in manifest["files"].items():
+                path = path_for_managed_key(key, skill_dir, agents_dir)
+                if path is None:
+                    issues.append(CheckIssue("invalid_managed_path", f"invalid managed path in manifest: {key}"))
+                elif path.is_symlink():
+                    issues.append(CheckIssue("unsafe_managed_file", f"managed file must not be a symlink: {path}", key))
+                else:
+                    try:
+                        ensure_safe_write_targets({path: ""}, allowed_roots)
+                    except ValueError as exc:
+                        issues.append(CheckIssue("unsafe_managed_file", str(exc), key))
+                    else:
+                        if not path.is_file():
+                            issues.append(CheckIssue("missing_managed_file", f"missing managed file: {path}", key))
+                        elif file_digest(path) != expected_digest:
+                            issues.append(CheckIssue("modified_managed_file", f"locally modified managed file: {path}", key))
+    return issues
+
+
 def check_install(
     scope: str,
     repo_root: Path,
     codex_home: Path,
     user_skills_home: Path | None = None,
 ) -> list[str]:
-    errors: list[str] = []
-    skill_dir, agents_dir, config_path = target_paths(scope, repo_root, codex_home, user_skills_home)
-    allowed_roots = allowed_install_roots(scope, repo_root, codex_home, user_skills_home)
-    skill_path = skill_dir / "SKILL.md"
-    if not skill_path.is_file():
-        errors.append(f"missing skill: {skill_path}")
-    else:
-        skill = skill_path.read_text(encoding="utf-8")
-        frontmatter = skill.split("---", 2)[1] if skill.count("---") >= 2 else ""
-        if "name: wise-owl" not in frontmatter or "description:" not in frontmatter:
-            errors.append(f"invalid skill frontmatter: {skill_path}")
+    return [issue.message for issue in collect_check_issues(scope, repo_root, codex_home, user_skills_home)]
 
-    for name in AGENT_NAMES:
-        path = agents_dir / f"{name}.toml"
-        if not path.is_file():
-            errors.append(f"missing agent TOML: {path.name}")
-            continue
-        parsed = parse_toml(path)
-        if parsed == {}:
-            errors.append(f"invalid agent TOML: {path.name}")
-        elif parsed is not None:
-            if parsed.get("name") != name:
-                errors.append(f"agent name mismatch: {path.name}")
-            if parsed.get("sandbox_mode") != "read-only":
-                errors.append(f"agent is not read-only: {path.name}")
-            if not isinstance(parsed.get("developer_instructions"), str) or not parsed["developer_instructions"].strip():
-                errors.append(f"missing developer_instructions: {path.name}")
+
+def installed_manifest_version(scope: str, repo_root: Path, codex_home: Path, user_skills_home: Path | None = None) -> str | None:
+    skill_dir, _, _ = target_paths(scope, repo_root, codex_home, user_skills_home)
+    try:
+        data = json.loads((skill_dir / MANIFEST_NAME).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    version = data.get("package_version") if isinstance(data, dict) else None
+    if not isinstance(version, str) or not version.strip() or any(ord(char) < 32 or ord(char) == 127 for char in version):
+        return None
+    return version
+
+
+def check_json_result(scope: str, installed_version: str | None, template_root: Path, issues: list[CheckIssue]) -> dict[str, Any]:
+    candidate_version = bundled_candidate_version(template_root)
+    version_issues: list[CheckIssue] = []
+    update_available: bool | None = None
+    if installed_version is not None and candidate_version is None:
+        version_issues.append(CheckIssue("candidate_version_unknown", "candidate version is unavailable"))
+    elif installed_version is not None and candidate_version is not None:
+        pattern = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
+        if pattern.fullmatch(installed_version) and pattern.fullmatch(candidate_version):
+            installed_tuple = tuple(int(part) for part in installed_version.split("."))
+            candidate_tuple = tuple(int(part) for part in candidate_version.split("."))
+            update_available = candidate_tuple > installed_tuple
         else:
-            text = path.read_text(encoding="utf-8")
-            if f'name = "{name}"' not in text or 'sandbox_mode = "read-only"' not in text or "developer_instructions" not in text:
-                errors.append(f"invalid agent TOML: {path.name}")
-
-    if not config_path.is_file():
-        errors.append(f"missing config: {config_path}")
+            version_issues.append(CheckIssue("version_unorderable", "installed and candidate versions cannot be ordered"))
+    all_issues = issues + version_issues
+    if installed_version is None:
+        action = "install"
+    elif issues:
+        action = "repair"
+    elif any(issue.code == "version_unorderable" for issue in version_issues):
+        action = "review"
+    elif update_available:
+        action = "upgrade"
     else:
-        config = parse_toml(config_path)
-        if config == {}:
-            errors.append(f"invalid config TOML: {config_path}")
-        elif config is not None:
-            agents = config.get("agents")
-            if not isinstance(agents, dict) or "max_threads" not in agents or "max_depth" not in agents:
-                errors.append(f"config is missing [agents] max_threads/max_depth: {config_path}")
-        else:
-            text = config_path.read_text(encoding="utf-8")
-            if "[agents]" not in text or "max_threads" not in text or "max_depth" not in text:
-                errors.append(f"config is missing [agents] max_threads/max_depth: {config_path}")
-
-    agents_md = repo_root / "AGENTS.md"
-    if scope == "repo" and agents_md.is_file():
-        policy_state = agents_policy_state(agents_md.read_text(encoding="utf-8"))
-        if policy_state == "v0.1":
-            errors.append(f"obsolete v0.1 Wise Owl Review Policy in {agents_md}; rerun with --patch-agents-md")
-        elif policy_state == "conflict":
-            errors.append(f"customized or ambiguous Wise Owl Review Policy in {agents_md}; review it manually")
-
-    manifest_path = skill_dir / MANIFEST_NAME
-    manifest_safe = True
-    if manifest_path.is_symlink():
-        errors.append(f"managed install manifest must not be a symlink: {manifest_path}")
-        manifest_safe = False
-    else:
-        try:
-            ensure_safe_write_targets({manifest_path: ""}, allowed_roots)
-        except ValueError as exc:
-            errors.append(str(exc))
-            manifest_safe = False
-    if manifest_safe and not manifest_path.is_file():
-        errors.append(f"missing managed install manifest: {manifest_path}")
-    elif manifest_safe:
-        try:
-            manifest = load_install_manifest(manifest_path)
-        except ValueError as exc:
-            errors.append(str(exc))
-        else:
-            for key, expected_digest in manifest["files"].items():
-                path = path_for_managed_key(key, skill_dir, agents_dir)
-                if path is None:
-                    errors.append(f"invalid managed path in manifest: {key}")
-                elif path.is_symlink():
-                    errors.append(f"managed file must not be a symlink: {path}")
-                else:
-                    try:
-                        ensure_safe_write_targets({path: ""}, allowed_roots)
-                    except ValueError as exc:
-                        errors.append(str(exc))
-                    else:
-                        if not path.is_file():
-                            errors.append(f"missing managed file: {path}")
-                        elif file_digest(path) != expected_digest:
-                            errors.append(f"locally modified managed file: {path}")
-    return errors
+        action = "none"
+    serialized_issues = []
+    for issue in all_issues:
+        item = {"code": issue.code}
+        if (
+            issue.subject is not None
+            and re.fullmatch(r"[A-Za-z0-9._/-]+", issue.subject)
+            and not Path(issue.subject).is_absolute()
+            and ".." not in Path(issue.subject).parts
+        ):
+            item["subject"] = issue.subject
+        serialized_issues.append(item)
+    return {
+        "ok": not issues,
+        "scope": scope,
+        "installed_version": installed_version,
+        "candidate_version": candidate_version,
+        "update_available": update_available,
+        "issue_codes": sorted({issue.code for issue in all_issues}),
+        "issues": serialized_issues,
+        "suggested_action": action,
+    }
 
 
 def remove_empty_skill_dirs(skill_dir: Path) -> None:
@@ -698,7 +796,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--model", default=DEFAULT_MODEL)
     parser.add_argument("--prime-model", default=DEFAULT_PRIME_MODEL)
     parser.add_argument("--verbose", action="store_true", help="List every changed path.")
-    return parser.parse_args(argv)
+    parser.add_argument("--json", action="store_true", help="Emit an allowlisted JSON result with --check.")
+    args = parser.parse_args(argv)
+    if args.json and not args.check:
+        parser.error("--json requires --check")
+    return args
 
 
 def print_target_summary(
@@ -721,7 +823,17 @@ def main() -> int:
     user_skills_home = Path(os.environ.get("WISE_OWL_USER_SKILLS_HOME", Path.home() / ".agents")).expanduser().resolve()
     template_root = Path(os.environ.get("WISE_OWL_TEMPLATE_ROOT", repo_root_from_script())).resolve()
     if args.check:
-        errors = check_install(args.scope, repo_root, codex_home, user_skills_home)
+        issues = collect_check_issues(args.scope, repo_root, codex_home, user_skills_home)
+        if args.json:
+            result = check_json_result(
+                args.scope,
+                installed_manifest_version(args.scope, repo_root, codex_home, user_skills_home),
+                template_root,
+                issues,
+            )
+            print(json.dumps(result, sort_keys=True))
+            return 0 if result["ok"] else 1
+        errors = [issue.message for issue in issues]
         if errors:
             print(f"Wise Owl check failed for {args.scope} scope:", file=sys.stderr)
             for error in errors:

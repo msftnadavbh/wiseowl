@@ -17,6 +17,7 @@ PLUGIN_INSTALLER = ROOT / "wise-owl-plugin" / "scripts" / "install_wise_owl.py"
 def load_installer():
     spec = importlib.util.spec_from_file_location("wise_owl_install", INSTALLER)
     module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
@@ -24,6 +25,7 @@ def load_installer():
 def load_plugin_installer():
     spec = importlib.util.spec_from_file_location("install_wise_owl_plugin", PLUGIN_INSTALLER)
     module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
@@ -221,6 +223,102 @@ class WiseOwlInstallTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("Wise Owl check passed for user scope.", result.stdout)
         self.assertEqual(before, after)
+
+    def test_check_json_is_privacy_safe(self):
+        self.installer.install("user", self.root, self.codex_home, template_root=ROOT)
+        skill_dir = self.user_skills_home / "skills" / "wise-owl"
+        manifest_path = skill_dir / self.installer.MANIFEST_NAME
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["scope"] = "repo"
+        manifest["files"]["evil\n/private/key"] = "0" * 64
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+        legacy = self.codex_home / "agents" / "owl_guard.toml"
+        legacy.write_text("legacy\n", encoding="utf-8")
+
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "install.py"), "--check", "--json"],
+            cwd=self.root,
+            env={
+                "HOME": str(self.root / "home"),
+                "WISE_OWL_TEMPLATE_ROOT": str(ROOT),
+            },
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        document = json.loads(result.stdout)
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.stderr, "")
+        self.assertEqual(document["scope"], "user")
+        self.assertFalse(document["ok"])
+        self.assertIn("manifest_scope_mismatch", document["issue_codes"])
+        self.assertIn("legacy_agent_present", document["issue_codes"])
+        self.assertEqual(document["issue_codes"], sorted(document["issue_codes"]))
+        self.assertTrue(all(set(issue) <= {"code", "subject"} for issue in document["issues"]))
+        self.assertIn({"code": "legacy_agent_present", "subject": "owl_guard.toml"}, document["issues"])
+        serialized = json.dumps(document)
+        self.assertNotIn(str(self.root), serialized)
+        self.assertNotIn("evil", serialized)
+        self.assertNotIn("private", serialized)
+        self.assertNotIn("\n", serialized)
+
+        human = subprocess.run(
+            [sys.executable, str(ROOT / "install.py"), "--check"],
+            cwd=self.root,
+            env={"HOME": str(self.root / "home"), "WISE_OWL_TEMPLATE_ROOT": str(ROOT)},
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(human.stdout, "")
+        self.assertIn("Wise Owl check failed for user scope:", human.stderr)
+
+        invalid = subprocess.run(
+            [sys.executable, str(ROOT / "install.py"), "--json"],
+            cwd=self.root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(invalid.returncode, 2)
+        self.assertEqual(invalid.stdout, "")
+        self.assertIn("--json requires --check", invalid.stderr)
+
+    def test_check_json_version_truth_table(self):
+        candidate = self.root / "candidate"
+        plugin_json = candidate / ".codex-plugin" / "plugin.json"
+        plugin_json.parent.mkdir(parents=True)
+
+        cases = (
+            (None, "0.2.0", None, "install", set()),
+            ("0.2.0", None, None, "none", {"candidate_version_unknown"}),
+            ("0.2.0", "0.2.0", False, "none", set()),
+            ("0.2.0", "0.3.0", True, "upgrade", set()),
+            ("0.3.0", "0.2.0", False, "none", set()),
+            ("development", "0.2.0", None, "review", {"version_unorderable"}),
+            ("0.2.0", "next", None, "review", {"version_unorderable"}),
+        )
+        for installed, bundled, update_available, action, extra_codes in cases:
+            with self.subTest(installed=installed, bundled=bundled):
+                if bundled is None:
+                    plugin_json.unlink(missing_ok=True)
+                else:
+                    plugin_json.write_text(json.dumps({"version": bundled}), encoding="utf-8")
+                issues = []
+                result = self.installer.check_json_result("user", installed, candidate, issues)
+                self.assertEqual(result["installed_version"], installed)
+                self.assertEqual(result["candidate_version"], bundled)
+                self.assertIs(result["update_available"], update_available)
+                self.assertEqual(result["suggested_action"], action)
+                self.assertEqual(set(result["issue_codes"]), extra_codes)
+
+        result = self.installer.check_json_result(
+            "user",
+            "0.2.0",
+            candidate,
+            [self.installer.CheckIssue("unsafe_managed_file", "private detail", "/private/secret")],
+        )
+        self.assertEqual(result["issues"][0], {"code": "unsafe_managed_file"})
 
     def test_install_success_output_includes_next_steps(self):
         result = subprocess.run(

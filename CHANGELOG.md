@@ -11,6 +11,7 @@
 - Hardened the release gate against missing suites and zero-test discovery.
 - Added a safe migration for the exact generated v0.1 AGENTS.md policy and controlled conflicts for customized policy blocks.
 - Added installation checks, managed upgrades, and safe uninstall behavior.
+- Added privacy-safe `--check --json` output with stable issue codes, manifest-scope and legacy-agent diagnostics, and explicit version/update semantics.
 - Added canonical plugin asset generation with complete skill references and scripts.
 - Added one deterministic release verifier and a Python 3.10, 3.12, and 3.14 CI matrix.
 - Replaced the malformed demo source with schema-valid critic and Prime packets.
