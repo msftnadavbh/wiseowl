@@ -194,6 +194,8 @@ Installer migration behavior: if legacy `owl_eyes.toml`, `owl_guard.toml`, or `o
 
 Successful installs create a managed install manifest inside the skill directory. Later installs can update unchanged Wise Owl-owned files without `--force`, while local modifications remain protected. Use `--uninstall` to remove unchanged owned files; shared `config.toml` and `AGENTS.md` content is left intact.
 
+Installer writes use exclusive same-directory temporary files that remain `0600` while content is populated, are flushed and file-synced, receive the target mode, and atomically replace one destination at a time. Existing modes are preserved; a new `config.toml` uses `0600`, while other new text files use `0644`. The manifest is written last. After process interruption, `--check` can report the partial state and the same candidate can be retried without `--force`. These are per-file torn-write guarantees only, not cross-file rollback, directory syncing, or power-loss durability.
+
 ## Plugin Skeleton
 
 The plugin skeleton lives in `wise-owl-plugin/`.

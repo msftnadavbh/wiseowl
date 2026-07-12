@@ -14,6 +14,7 @@
 - Added installation checks, managed upgrades, and safe uninstall behavior.
 - Added privacy-safe `--check --json` output with stable issue codes, manifest-scope and legacy-agent diagnostics, and explicit version/update semantics.
 - Added canonical plugin asset generation with complete skill references and scripts.
+- Made installer writes secure and interruption-safe per file with preserved permissions, private new configuration, atomic replacement, manifest-last retry behavior, and controlled write-error output.
 - Added one deterministic release verifier and a Python 3.10, 3.12, and 3.14 CI matrix.
 - Replaced the malformed demo source with schema-valid critic and Prime packets.
 

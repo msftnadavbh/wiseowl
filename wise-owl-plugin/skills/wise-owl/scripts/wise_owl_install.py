@@ -8,7 +8,9 @@ import hashlib
 import json
 import os
 import re
+import stat
 import sys
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -466,6 +468,22 @@ def preflight_conflicts(
         raise FileExistsError(f"refusing to overwrite existing files; use --force: {joined}")
 
 
+def atomic_write_text(path: Path, content: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    final_mode = stat.S_IMODE(path.stat().st_mode) if path.exists() else (0o600 if path.name == "config.toml" else 0o644)
+    fd, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    temporary_path = Path(temporary_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as temporary:
+            temporary.write(content)
+            temporary.flush()
+            os.fsync(temporary.fileno())
+        os.chmod(temporary_path, final_mode)
+        os.replace(temporary_path, path)
+    finally:
+        temporary_path.unlink(missing_ok=True)
+
+
 def write_planned(
     planned: dict[Path, str],
     dry_run: bool,
@@ -482,8 +500,7 @@ def write_planned(
             continue
         changed.append(path)
         if not dry_run:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(content, encoding="utf-8")
+            atomic_write_text(path, content)
     return changed
 
 
@@ -788,9 +805,9 @@ def uninstall(
 
     if preserved_files:
         if not dry_run:
-            manifest_path.write_text(
+            atomic_write_text(
+                manifest_path,
                 manifest_content(scope, str(manifest.get("package_version", "unknown")), preserved_files),
-                encoding="utf-8",
             )
     else:
         removed.append(manifest_path)
@@ -879,7 +896,7 @@ def main() -> int:
     if args.uninstall:
         try:
             removed, preserved = uninstall(args.scope, repo_root, codex_home, user_skills_home, args.dry_run)
-        except (FileNotFoundError, ValueError) as exc:
+        except (OSError, ValueError) as exc:
             print(f"Wise Owl uninstall failed: {exc}", file=sys.stderr)
             return 1
         label = "Would remove (dry run)" if args.dry_run else "Removed"
@@ -903,7 +920,7 @@ def main() -> int:
             prime_model=args.prime_model,
             template_root=template_root,
         )
-    except (FileExistsError, ValueError) as exc:
+    except (OSError, ValueError) as exc:
         print(f"Wise Owl install failed: {exc}", file=sys.stderr)
         return 1
     if args.dry_run:

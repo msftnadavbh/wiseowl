@@ -1,12 +1,17 @@
 import hashlib
 import importlib.util
+import io
 import json
+import os
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -431,6 +436,135 @@ class WiseOwlInstallTests(unittest.TestCase):
         manifest = json.loads((installed_skill.parent / ".wise-owl-install.json").read_text(encoding="utf-8"))
         self.assertEqual(manifest["schema_version"], 1)
         self.assertIn("skill/SKILL.md", manifest["files"])
+
+    def test_atomic_write_preserves_bytes_modes_and_cleanup(self):
+        target = self.root / "nested" / "note.txt"
+        target.parent.mkdir()
+        target.write_text("old\n", encoding="utf-8")
+        target.chmod(0o640)
+        observed = {}
+        real_mkstemp = tempfile.mkstemp
+        real_fsync = os.fsync
+
+        def inspected_mkstemp(*args, **kwargs):
+            observed["dir"] = Path(kwargs["dir"])
+            fd, name = real_mkstemp(*args, **kwargs)
+            observed["temp"] = Path(name)
+            return fd, name
+
+        def inspected_fsync(fd):
+            observed["mode_while_populated"] = stat.S_IMODE(os.fstat(fd).st_mode)
+            return real_fsync(fd)
+
+        with mock.patch.object(self.installer.tempfile, "mkstemp", side_effect=inspected_mkstemp) as mkstemp:
+            with mock.patch.object(self.installer.os, "fsync", side_effect=inspected_fsync) as fsync:
+                self.installer.atomic_write_text(target, "new\n")
+
+        self.assertEqual(observed["dir"], target.parent)
+        self.assertEqual(observed["mode_while_populated"], 0o600)
+        self.assertEqual(target.read_bytes(), b"new\n")
+        self.assertEqual(stat.S_IMODE(target.stat().st_mode), 0o640)
+        self.assertFalse(observed["temp"].exists())
+        mkstemp.assert_called_once()
+        fsync.assert_called_once()
+
+        config = self.root / "fresh" / "config.toml"
+        text = self.root / "fresh" / "SKILL.md"
+        self.installer.atomic_write_text(config, "[agents]\n")
+        self.installer.atomic_write_text(text, "# Skill\n")
+        self.assertEqual(stat.S_IMODE(config.stat().st_mode), 0o600)
+        self.assertEqual(stat.S_IMODE(text.stat().st_mode), 0o644)
+
+        old_bytes = target.read_bytes()
+        old_mode = stat.S_IMODE(target.stat().st_mode)
+        with mock.patch.object(self.installer.os, "replace", side_effect=OSError("injected replace failure")):
+            with self.assertRaisesRegex(OSError, "injected replace failure"):
+                self.installer.atomic_write_text(target, "replacement\n")
+        self.assertEqual(target.read_bytes(), old_bytes)
+        self.assertEqual(stat.S_IMODE(target.stat().st_mode), old_mode)
+        self.assertEqual(list(target.parent.glob(".*.tmp")), [])
+
+        stderr = io.StringIO()
+        args = SimpleNamespace(
+            check=False, uninstall=False, json=False, scope="user", dry_run=False,
+            force=False, patch_agents_md=False, model="test", prime_model="prime", verbose=False,
+        )
+        with mock.patch.object(self.installer, "parse_args", return_value=args):
+            with mock.patch.object(self.installer, "install", side_effect=OSError("injected write failure")):
+                with mock.patch("sys.stderr", stderr):
+                    self.assertEqual(self.installer.main(), 1)
+        self.assertIn("Wise Owl install failed: injected write failure", stderr.getvalue())
+        self.assertNotIn("Traceback", stderr.getvalue())
+
+    def test_interrupted_upgrade_retries_same_candidate(self):
+        template = self.make_template()
+        self.installer.install("user", self.root, self.codex_home, template_root=template)
+        skill_dir = self.user_skills_home / "skills" / "wise-owl"
+        manifest_path = skill_dir / self.installer.MANIFEST_NAME
+        old_manifest = manifest_path.read_bytes()
+        for relative in ("SKILL.md", "references/finding-schema.md", "references/severity-rubric.md"):
+            source = template / ".agents" / "skills" / "wise-owl" / relative
+            source.write_text(source.read_text(encoding="utf-8") + "\nUpgrade marker.\n", encoding="utf-8")
+
+        real_replace = os.replace
+        replaced = []
+
+        def interrupt_after_several(source, destination):
+            if len(replaced) == 3:
+                raise OSError("injected interruption")
+            real_replace(source, destination)
+            replaced.append(Path(destination))
+
+        with mock.patch.object(self.installer.os, "replace", side_effect=interrupt_after_several):
+            with self.assertRaisesRegex(OSError, "injected interruption"):
+                self.installer.install("user", self.root, self.codex_home, template_root=template)
+
+        self.assertEqual(len(replaced), 3)
+        self.assertNotIn(manifest_path, replaced)
+        self.assertEqual(manifest_path.read_bytes(), old_manifest)
+        self.assertEqual(list(self.root.rglob(".*.tmp")), [])
+        check_env = {
+            "HOME": str(self.root / "home"),
+            "WISE_OWL_REPO_ROOT": str(self.root),
+            "WISE_OWL_CODEX_HOME": str(self.codex_home),
+            "WISE_OWL_USER_SKILLS_HOME": str(self.user_skills_home),
+            "WISE_OWL_TEMPLATE_ROOT": str(template),
+        }
+        partial_check = subprocess.run(
+            [sys.executable, str(ROOT / "install.py"), "--check"],
+            cwd=self.root,
+            env=check_env,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(partial_check.returncode, 1)
+        self.assertIn("Wise Owl check failed for user scope", partial_check.stderr)
+
+        retry_order = []
+
+        def record_replace(source, destination):
+            real_replace(source, destination)
+            retry_order.append(Path(destination))
+
+        with mock.patch.object(self.installer.os, "replace", side_effect=record_replace):
+            self.installer.install("user", self.root, self.codex_home, template_root=template)
+
+        self.assertEqual(retry_order[-1], manifest_path)
+        self.assertEqual(
+            self.installer.collect_check_issues("user", self.root, self.codex_home, self.user_skills_home),
+            [],
+        )
+        completed_check = subprocess.run(
+            [sys.executable, str(ROOT / "install.py"), "--check"],
+            cwd=self.root,
+            env=check_env,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(completed_check.returncode, 0, completed_check.stderr)
+        self.assertIn("Wise Owl check passed for user scope", completed_check.stdout)
 
     def test_managed_upgrade_refuses_modified_owned_files(self):
         template = self.make_template()
