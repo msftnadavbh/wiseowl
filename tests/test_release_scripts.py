@@ -270,6 +270,52 @@ class ReleaseScriptTests(unittest.TestCase):
                 f"{build_release_archive.archive_sha256(second)}  {second.name}\n",
             )
 
+    def test_archive_rejects_unsafe_version_filename_components(self):
+        build_release_archive = load_script("build_release_archive")
+        for version in ("../escape", "1/../../escape", "1\\escape", ".", ".."):
+            with self.subTest(version=version), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory) / "release"
+                manifest = root / "wise-owl-plugin" / ".codex-plugin" / "plugin.json"
+                manifest.parent.mkdir(parents=True)
+                manifest.write_text(json.dumps({"version": version}), encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, "safe filename component"):
+                    build_release_archive.build_archive(root, Path(directory) / "dist")
+
+    def test_archive_and_checksum_are_direct_output_children(self):
+        build_release_archive = load_script("build_release_archive")
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            root = base / "release"
+            manifest = root / "wise-owl-plugin" / ".codex-plugin" / "plugin.json"
+            manifest.parent.mkdir(parents=True)
+            manifest.write_text('{"version": "0.2.0"}', encoding="utf-8")
+            (root / "README.md").write_text("Wise Owl\n", encoding="utf-8")
+            output = base / "dist"
+
+            archive = build_release_archive.build_archive(root, output)
+            checksum = archive.with_name(f"{archive.name}.sha256")
+
+            self.assertEqual(archive.resolve().parent, output.resolve())
+            self.assertEqual(checksum.resolve().parent, output.resolve())
+
+    def test_archive_rejects_output_symlinks_that_escape_output_directory(self):
+        build_release_archive = load_script("build_release_archive")
+        for escaped_name in ("wise-owl-v0.2.0.zip", "wise-owl-v0.2.0.zip.sha256"):
+            with self.subTest(escaped_name=escaped_name), tempfile.TemporaryDirectory() as directory:
+                base = Path(directory)
+                root = base / "release"
+                manifest = root / "wise-owl-plugin" / ".codex-plugin" / "plugin.json"
+                manifest.parent.mkdir(parents=True)
+                manifest.write_text('{"version": "0.2.0"}', encoding="utf-8")
+                output = base / "dist"
+                output.mkdir()
+                outside = base / "outside" / escaped_name
+                outside.parent.mkdir()
+                (output / escaped_name).symlink_to(outside)
+
+                with self.assertRaisesRegex(ValueError, "direct child"):
+                    build_release_archive.build_archive(root, output)
+
     def test_installer_smoke_is_confined_to_supplied_sandbox(self):
         verify_release = load_script("verify_release")
         with tempfile.TemporaryDirectory() as directory:

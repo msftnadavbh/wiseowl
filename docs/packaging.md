@@ -57,7 +57,7 @@ Use `--force` only after reviewing the dry-run output and intentionally overwrit
 
 Each completed install writes a managed install manifest at `.wise-owl-install.json` inside the installed skill. It stores hashes only for Wise Owl-owned skill and agent files. A later install upgrades files whose current hashes still match and refuses to overwrite local modifications.
 
-Changed files are populated in exclusive same-directory temporary files, file-synced, assigned their intended permissions, and replaced atomically one file at a time. Existing permissions are preserved; a new `config.toml` is `0600`, and other new text files are `0644`. The manifest is replaced last, so `--check` diagnoses a process-interrupted partial install and rerunning the same candidate can finish it without `--force`. This prevents torn individual files during process interruption; it is not a cross-file transaction, rollback mechanism, directory-sync guarantee, or promise of power-loss durability.
+Changed files are populated in exclusive same-directory temporary files, file-synced, assigned their intended permissions, and replaced atomically one file at a time. Existing permissions are preserved; a new `config.toml` is `0600`, and other new text files are `0644`. Obsolete managed files are removed before the new manifest is replaced last, so a stale-removal failure leaves the prior ownership record available; `--check` diagnoses a process-interrupted partial install and rerunning the same candidate can finish it without `--force`. This prevents torn individual files during process interruption; it is not a cross-file transaction, rollback mechanism, directory-sync guarantee, or promise of power-loss durability.
 
 Override for testing:
 

@@ -328,6 +328,36 @@ class WiseOwlInstallTests(unittest.TestCase):
         self.assertIn("version_unorderable", document["issue_codes"])
         self.assert_json_strings_are_private(document)
 
+    def test_check_json_distinguishes_missing_manifest_from_invalid_manifest_version(self):
+        self.installer.install("user", self.root, self.codex_home, template_root=ROOT)
+        manifest_path = self.user_skills_home / "skills" / "wise-owl" / self.installer.MANIFEST_NAME
+        base_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        cases = (
+            ({key: value for key, value in base_manifest.items() if key != "package_version"}, "missing_manifest_version"),
+            ({**base_manifest, "package_version": None}, "invalid_manifest_version"),
+            ({**base_manifest, "package_version": 2}, "invalid_manifest_version"),
+            ({**base_manifest, "package_version": "../private"}, "unsafe_manifest_version"),
+        )
+        for manifest, expected_code in cases:
+            with self.subTest(expected_code=expected_code, version=manifest.get("package_version", "missing")):
+                manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+                result = subprocess.run(
+                    [sys.executable, str(ROOT / "install.py"), "--check", "--json"],
+                    cwd=self.root,
+                    env={"HOME": str(self.root / "home"), "WISE_OWL_TEMPLATE_ROOT": str(ROOT)},
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                document = json.loads(result.stdout)
+                self.assertEqual(result.returncode, 1)
+                self.assertEqual(result.stderr, "")
+                self.assertIn(expected_code, document["issue_codes"])
+                self.assertNotEqual(document["suggested_action"], "install")
+                self.assertIn(document["suggested_action"], {"repair", "review"})
+                self.assertIsNone(document["installed_version"])
+                self.assert_json_strings_are_private(document)
+
     def test_check_json_handles_malformed_utf8_without_traceback(self):
         self.installer.install("user", self.root, self.codex_home, template_root=ROOT)
         skill = self.user_skills_home / "skills" / "wise-owl" / "SKILL.md"
@@ -593,6 +623,40 @@ class WiseOwlInstallTests(unittest.TestCase):
         self.assertFalse(installed.exists())
         manifest = json.loads((self.user_skills_home / "skills" / "wise-owl" / ".wise-owl-install.json").read_text())
         self.assertNotIn("skill/references/old-guide.md", manifest["files"])
+
+    def test_stale_removal_failure_keeps_old_manifest_and_retry_recovers(self):
+        template = self.make_template()
+        stale_source = template / ".agents" / "skills" / "wise-owl" / "references" / "old-guide.md"
+        stale_source.write_text("old guide\n", encoding="utf-8")
+        self.installer.install("user", self.root, self.codex_home, template_root=template)
+        installed = self.user_skills_home / "skills" / "wise-owl" / "references" / "old-guide.md"
+        manifest_path = self.user_skills_home / "skills" / "wise-owl" / self.installer.MANIFEST_NAME
+        old_manifest = manifest_path.read_bytes()
+        stale_source.unlink()
+        skill_source = template / ".agents" / "skills" / "wise-owl" / "SKILL.md"
+        skill_source.write_text(skill_source.read_text(encoding="utf-8") + "\nUpgrade marker.\n", encoding="utf-8")
+
+        with mock.patch.object(
+            self.installer,
+            "remove_stale_files",
+            side_effect=OSError("injected stale removal failure"),
+        ):
+            with self.assertRaisesRegex(OSError, "injected stale removal failure"):
+                self.installer.install("user", self.root, self.codex_home, template_root=template)
+
+        self.assertEqual(manifest_path.read_bytes(), old_manifest)
+        self.assertTrue(installed.exists())
+        issues = self.installer.collect_check_issues("user", self.root, self.codex_home, self.user_skills_home)
+        self.assertTrue(any(issue.code == "modified_managed_file" for issue in issues), issues)
+
+        self.installer.install("user", self.root, self.codex_home, template_root=template)
+        self.assertFalse(installed.exists())
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        self.assertNotIn("skill/references/old-guide.md", manifest["files"])
+        self.assertEqual(
+            self.installer.collect_check_issues("user", self.root, self.codex_home, self.user_skills_home),
+            [],
+        )
 
     def test_managed_upgrade_refuses_to_orphan_modified_stale_files(self):
         template = self.make_template()

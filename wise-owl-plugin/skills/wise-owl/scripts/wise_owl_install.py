@@ -545,18 +545,25 @@ def install(
     }
     stale_hashes = stale_managed_hashes(previous_manifest, set(managed_files), skill_dir, agents_dir)
     template_root = template_root or repo_root_from_script()
-    planned[manifest_path] = manifest_content(scope, package_version(template_root), managed_files)
+    new_manifest = manifest_content(scope, package_version(template_root), managed_files)
+    planned[manifest_path] = new_manifest
     if not dry_run:
         ensure_safe_write_targets(
             planned,
             allowed_install_roots(scope, repo_root, codex_home, user_skills_home, include_repo=patch_agents),
         )
         preflight_stale_files(stale_hashes, force)
-    changed = write_planned(planned, dry_run, force, previous_hashes)
+    content_planned = {path: content for path, content in planned.items() if path != manifest_path}
+    changed = write_planned(content_planned, dry_run, force, previous_hashes)
     changed.extend(remove_stale_files(stale_hashes, dry_run))
     if not dry_run:
         remove_empty_skill_dirs(skill_dir)
     changed.extend(handle_legacy_agents(agents_dir, dry_run, force))
+    old_manifest_content = manifest_path.read_text(encoding="utf-8") if manifest_path.exists() else None
+    if old_manifest_content != new_manifest:
+        changed.append(manifest_path)
+        if not dry_run:
+            atomic_write_text(manifest_path, new_manifest)
     return changed
 
 
@@ -660,6 +667,12 @@ def collect_check_issues(
         else:
             if manifest.get("scope") != scope:
                 issues.append(CheckIssue("manifest_scope_mismatch", f"managed install manifest scope does not match {scope}: {manifest_path}", MANIFEST_NAME))
+            if "package_version" not in manifest:
+                issues.append(CheckIssue("missing_manifest_version", "managed install manifest has no package version", MANIFEST_NAME))
+            elif not isinstance(manifest.get("package_version"), str):
+                issues.append(CheckIssue("invalid_manifest_version", "managed install manifest package version has an invalid type", MANIFEST_NAME))
+            elif safe_public_version(manifest["package_version"]) is None:
+                issues.append(CheckIssue("unsafe_manifest_version", "managed install manifest package version is not safe to report", MANIFEST_NAME))
             for key, expected_digest in manifest["files"].items():
                 path = path_for_managed_key(key, skill_dir, agents_dir)
                 if path is None:
@@ -705,7 +718,8 @@ def installed_manifest_version(scope: str, repo_root: Path, codex_home: Path, us
 
 
 def check_json_result(scope: str, installed_version: str | None, template_root: Path, issues: list[CheckIssue]) -> dict[str, Any]:
-    installed_source_present = installed_version is not None
+    manifest_version_codes = {"missing_manifest_version", "invalid_manifest_version", "unsafe_manifest_version"}
+    installed_source_present = installed_version is not None or any(issue.code in manifest_version_codes for issue in issues)
     installed_version = safe_public_version(installed_version)
     candidate_version, candidate_source_present = bundled_candidate_source(template_root)
     version_issues: list[CheckIssue] = []

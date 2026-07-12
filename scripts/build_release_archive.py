@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import subprocess
 import sys
 import zipfile
@@ -29,8 +30,8 @@ def release_version(root: Path) -> str:
     manifest = root / "wise-owl-plugin" / ".codex-plugin" / "plugin.json"
     data = json.loads(manifest.read_text(encoding="utf-8"))
     version = data.get("version")
-    if not isinstance(version, str) or not version.strip():
-        raise ValueError(f"plugin manifest has no valid version: {manifest}")
+    if not isinstance(version, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", version):
+        raise ValueError(f"plugin manifest version is not a safe filename component: {manifest}")
     return version
 
 
@@ -90,6 +91,12 @@ def iter_files(root: Path) -> list[Path]:
 def build_archive(root: Path, output_dir: Path) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     archive = output_dir / archive_name(root)
+    output_root = output_dir.resolve()
+    if archive.resolve().parent != output_root:
+        raise ValueError("archive output must be a direct child of output_dir")
+    checksum = archive.with_name(f"{archive.name}.sha256")
+    if checksum.resolve().parent != output_root:
+        raise ValueError("checksum output must be a direct child of output_dir")
     with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as handle:
         for relative in iter_files(root):
             source = root / relative

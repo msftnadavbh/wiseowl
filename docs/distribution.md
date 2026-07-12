@@ -26,7 +26,7 @@ Build the local zip:
 python3 scripts/build_release_archive.py
 ```
 
-The archive is written to `dist/wise-owl-v0.2.0.zip`, with a standard SHA-256 sidecar at `dist/wise-owl-v0.2.0.zip.sha256`. The version is read from the plugin manifest. Repeated builds from identical inputs produce identical archive bytes. Symlinks are excluded, including links to files within the repository, so the archive contains only regular files selected beneath the release root. A tarball can be built from the same included file set if needed.
+The archive is written to `dist/wise-owl-v0.2.0.zip`, with a standard SHA-256 sidecar at `dist/wise-owl-v0.2.0.zip.sha256`. The version is read from the plugin manifest and must be a safe filename component; both outputs must resolve as direct children of the selected output directory. Repeated builds from identical inputs produce identical archive bytes. Symlinks are excluded, including links to files within the repository, so the archive contains only regular files selected beneath the release root. A tarball can be built from the same included file set if needed.
 
 ## Include
 
