@@ -143,20 +143,30 @@ def package_version(template_root: Path) -> str:
     return "development"
 
 
-def bundled_candidate_version(template_root: Path) -> str | None:
-    """Return only a version bundled with the invoking distribution."""
+def safe_public_version(value: Any) -> str | None:
+    if not isinstance(value, str) or len(value) > 64:
+        return None
+    return value if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._+-]*", value) else None
+
+
+def bundled_candidate_source(template_root: Path) -> tuple[str | None, bool]:
     for path in (
         template_root / "wise-owl-plugin" / ".codex-plugin" / "plugin.json",
         template_root / ".codex-plugin" / "plugin.json",
     ):
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
+        except (OSError, UnicodeError, json.JSONDecodeError):
             continue
         version = data.get("version") if isinstance(data, dict) else None
-        if isinstance(version, str) and version.strip() and not any(ord(char) < 32 or ord(char) == 127 for char in version):
-            return version
-    return None
+        if version is not None:
+            return safe_public_version(version), True
+    return None, False
+
+
+def bundled_candidate_version(template_root: Path) -> str | None:
+    """Return only a safe version bundled with the invoking distribution."""
+    return bundled_candidate_source(template_root)[0]
 
 
 def merge_config(existing: str) -> str:
@@ -351,7 +361,7 @@ def path_for_managed_key(key: str, skill_dir: Path, agents_dir: Path) -> Path | 
 def load_install_manifest(path: Path) -> dict[str, Any]:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise ValueError(f"invalid managed install manifest at {path}: {exc}") from exc
     if not isinstance(data, dict) or data.get("schema_version") != MANIFEST_SCHEMA_VERSION:
         raise ValueError(f"invalid managed install manifest at {path}: unsupported schema")
@@ -557,10 +567,14 @@ def collect_check_issues(
     if not skill_path.is_file():
         issues.append(CheckIssue("missing_skill", f"missing skill: {skill_path}", "SKILL.md"))
     else:
-        skill = skill_path.read_text(encoding="utf-8")
-        frontmatter = skill.split("---", 2)[1] if skill.count("---") >= 2 else ""
-        if "name: wise-owl" not in frontmatter or "description:" not in frontmatter:
-            issues.append(CheckIssue("invalid_skill_frontmatter", f"invalid skill frontmatter: {skill_path}", "SKILL.md"))
+        try:
+            skill = skill_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeError):
+            issues.append(CheckIssue("unreadable_skill", f"unable to read skill: {skill_path}", "SKILL.md"))
+        else:
+            frontmatter = skill.split("---", 2)[1] if skill.count("---") >= 2 else ""
+            if "name: wise-owl" not in frontmatter or "description:" not in frontmatter:
+                issues.append(CheckIssue("invalid_skill_frontmatter", f"invalid skill frontmatter: {skill_path}", "SKILL.md"))
 
     for name in AGENT_NAMES:
         path = agents_dir / f"{name}.toml"
@@ -643,8 +657,14 @@ def collect_check_issues(
                     else:
                         if not path.is_file():
                             issues.append(CheckIssue("missing_managed_file", f"missing managed file: {path}", key))
-                        elif file_digest(path) != expected_digest:
-                            issues.append(CheckIssue("modified_managed_file", f"locally modified managed file: {path}", key))
+                        else:
+                            try:
+                                digest = file_digest(path)
+                            except OSError:
+                                issues.append(CheckIssue("unreadable_managed_file", f"unable to read managed file: {path}", key))
+                            else:
+                                if digest != expected_digest:
+                                    issues.append(CheckIssue("modified_managed_file", f"locally modified managed file: {path}", key))
     return issues
 
 
@@ -661,19 +681,21 @@ def installed_manifest_version(scope: str, repo_root: Path, codex_home: Path, us
     skill_dir, _, _ = target_paths(scope, repo_root, codex_home, user_skills_home)
     try:
         data = json.loads((skill_dir / MANIFEST_NAME).read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+    except (OSError, UnicodeError, json.JSONDecodeError):
         return None
     version = data.get("package_version") if isinstance(data, dict) else None
-    if not isinstance(version, str) or not version.strip() or any(ord(char) < 32 or ord(char) == 127 for char in version):
-        return None
-    return version
+    return version if isinstance(version, str) else None
 
 
 def check_json_result(scope: str, installed_version: str | None, template_root: Path, issues: list[CheckIssue]) -> dict[str, Any]:
-    candidate_version = bundled_candidate_version(template_root)
+    installed_source_present = installed_version is not None
+    installed_version = safe_public_version(installed_version)
+    candidate_version, candidate_source_present = bundled_candidate_source(template_root)
     version_issues: list[CheckIssue] = []
     update_available: bool | None = None
-    if installed_version is not None and candidate_version is None:
+    if (installed_source_present and installed_version is None) or (candidate_source_present and candidate_version is None):
+        version_issues.append(CheckIssue("version_unorderable", "installed or candidate version is not a supported public version"))
+    elif installed_version is not None and candidate_version is None:
         version_issues.append(CheckIssue("candidate_version_unknown", "candidate version is unavailable"))
     elif installed_version is not None and candidate_version is not None:
         pattern = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
@@ -684,7 +706,7 @@ def check_json_result(scope: str, installed_version: str | None, template_root: 
         else:
             version_issues.append(CheckIssue("version_unorderable", "installed and candidate versions cannot be ordered"))
     all_issues = issues + version_issues
-    if installed_version is None:
+    if not installed_source_present:
         action = "install"
     elif issues:
         action = "repair"
@@ -823,16 +845,29 @@ def main() -> int:
     user_skills_home = Path(os.environ.get("WISE_OWL_USER_SKILLS_HOME", Path.home() / ".agents")).expanduser().resolve()
     template_root = Path(os.environ.get("WISE_OWL_TEMPLATE_ROOT", repo_root_from_script())).resolve()
     if args.check:
-        issues = collect_check_issues(args.scope, repo_root, codex_home, user_skills_home)
         if args.json:
-            result = check_json_result(
-                args.scope,
-                installed_manifest_version(args.scope, repo_root, codex_home, user_skills_home),
-                template_root,
-                issues,
-            )
+            try:
+                issues = collect_check_issues(args.scope, repo_root, codex_home, user_skills_home)
+                result = check_json_result(
+                    args.scope,
+                    installed_manifest_version(args.scope, repo_root, codex_home, user_skills_home),
+                    template_root,
+                    issues,
+                )
+            except Exception:
+                result = {
+                    "ok": False,
+                    "scope": args.scope,
+                    "installed_version": None,
+                    "candidate_version": None,
+                    "update_available": None,
+                    "issue_codes": ["check_failed"],
+                    "issues": [{"code": "check_failed"}],
+                    "suggested_action": "review",
+                }
             print(json.dumps(result, sort_keys=True))
             return 0 if result["ok"] else 1
+        issues = collect_check_issues(args.scope, repo_root, codex_home, user_skills_home)
         errors = [issue.message for issue in issues]
         if errors:
             print(f"Wise Owl check failed for {args.scope} scope:", file=sys.stderr)

@@ -41,6 +41,18 @@ class WiseOwlInstallTests(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
+    def assert_json_strings_are_private(self, value):
+        if isinstance(value, dict):
+            for key, item in value.items():
+                self.assert_json_strings_are_private(key)
+                self.assert_json_strings_are_private(item)
+        elif isinstance(value, list):
+            for item in value:
+                self.assert_json_strings_are_private(item)
+        elif isinstance(value, str):
+            self.assertNotIn(str(self.root), value)
+            self.assertFalse(any(ord(char) < 32 or ord(char) == 127 for char in value), repr(value))
+
     def make_template(self):
         template = self.root / "template"
         shutil.copytree(ROOT / ".agents", template / ".agents")
@@ -256,11 +268,9 @@ class WiseOwlInstallTests(unittest.TestCase):
         self.assertEqual(document["issue_codes"], sorted(document["issue_codes"]))
         self.assertTrue(all(set(issue) <= {"code", "subject"} for issue in document["issues"]))
         self.assertIn({"code": "legacy_agent_present", "subject": "owl_guard.toml"}, document["issues"])
-        serialized = json.dumps(document)
-        self.assertNotIn(str(self.root), serialized)
-        self.assertNotIn("evil", serialized)
-        self.assertNotIn("private", serialized)
-        self.assertNotIn("\n", serialized)
+        self.assert_json_strings_are_private(document)
+        self.assertNotIn("evil", json.dumps(document))
+        self.assertNotIn("private", json.dumps(document))
 
         human = subprocess.run(
             [sys.executable, str(ROOT / "install.py"), "--check"],
@@ -283,6 +293,75 @@ class WiseOwlInstallTests(unittest.TestCase):
         self.assertEqual(invalid.returncode, 2)
         self.assertEqual(invalid.stdout, "")
         self.assertIn("--json requires --check", invalid.stderr)
+
+    def test_check_json_rejects_unsafe_versions_from_cli_sources(self):
+        self.installer.install("user", self.root, self.codex_home, template_root=ROOT)
+        manifest_path = self.user_skills_home / "skills" / "wise-owl" / self.installer.MANIFEST_NAME
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["package_version"] = "/Users/private/" + "x" * 200
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+        candidate = self.root / "candidate"
+        plugin_json = candidate / ".codex-plugin" / "plugin.json"
+        plugin_json.parent.mkdir(parents=True)
+        plugin_json.write_text(json.dumps({"version": "vérsion/秘密"}), encoding="utf-8")
+
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "install.py"), "--check", "--json"],
+            cwd=self.root,
+            env={
+                "HOME": str(self.root / "home"),
+                "WISE_OWL_TEMPLATE_ROOT": str(candidate),
+            },
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        document = json.loads(result.stdout)
+        self.assertEqual(result.stderr, "")
+        self.assertIsNone(document["installed_version"])
+        self.assertIsNone(document["candidate_version"])
+        self.assertIn("version_unorderable", document["issue_codes"])
+        self.assert_json_strings_are_private(document)
+
+    def test_check_json_handles_malformed_utf8_without_traceback(self):
+        self.installer.install("user", self.root, self.codex_home, template_root=ROOT)
+        skill = self.user_skills_home / "skills" / "wise-owl" / "SKILL.md"
+        skill.write_bytes(b"\xff\xfe/private/secret")
+
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "install.py"), "--check", "--json"],
+            cwd=self.root,
+            env={"HOME": str(self.root / "home"), "WISE_OWL_TEMPLATE_ROOT": str(ROOT)},
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        document = json.loads(result.stdout)
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.stderr, "")
+        self.assertIn("unreadable_skill", document["issue_codes"])
+        self.assert_json_strings_are_private(document)
+
+    def test_check_json_handles_unreadable_managed_file(self):
+        self.installer.install("user", self.root, self.codex_home, template_root=ROOT)
+        managed = self.user_skills_home / "skills" / "wise-owl" / "references" / "finding-schema.md"
+        managed.chmod(0)
+        try:
+            result = subprocess.run(
+                [sys.executable, str(ROOT / "install.py"), "--check", "--json"],
+                cwd=self.root,
+                env={"HOME": str(self.root / "home"), "WISE_OWL_TEMPLATE_ROOT": str(ROOT)},
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        finally:
+            managed.chmod(0o644)
+        document = json.loads(result.stdout)
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.stderr, "")
+        self.assertIn("unreadable_managed_file", document["issue_codes"])
+        self.assert_json_strings_are_private(document)
 
     def test_check_json_version_truth_table(self):
         candidate = self.root / "candidate"
