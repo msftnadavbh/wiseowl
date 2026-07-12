@@ -134,7 +134,7 @@ Older installations without a managed manifest are not guessed at. Review the dr
 ## Release Checklist
 
 - Run `python3 scripts/verify_release.py`.
-- Confirm the verifier runs unit, compile, packet, plugin drift, and sandboxed installer checks.
+- Confirm the verifier runs unit, compile, packet, plugin drift, and sandboxed user/repo installer checks, including valid and invalid critic fixtures through both installed validator copies.
 - Optionally regenerate the CLI demo when its source transcript or renderer changes.
 - Confirm user-local install removes legacy `owl_*` TOMLs only when `--force` is intentionally used.
 - Confirm the root `LICENSE` file is present and MIT is selected in `docs/LICENSE_DECISION.md`.

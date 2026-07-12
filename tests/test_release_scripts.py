@@ -280,6 +280,46 @@ class ReleaseScriptTests(unittest.TestCase):
         self.assertTrue(written)
         self.assertTrue(all(str(path).startswith(str(sandbox)) for path in written))
 
+    def test_installer_smoke_exercises_installed_user_and_repo_copies(self):
+        verify_release = load_script("verify_release")
+        real_run_command = verify_release.run_command
+        commands = []
+
+        def record_command(command, cwd, env=None):
+            commands.append(command)
+            return real_run_command(command, cwd, env)
+
+        with tempfile.TemporaryDirectory() as directory:
+            sandbox = Path(directory)
+            with mock.patch.object(verify_release, "run_command", side_effect=record_command):
+                errors = verify_release.installer_smoke(ROOT, sandbox)
+
+            user_skill = sandbox / "home" / ".agents" / "skills" / "wise-owl"
+            user_agents = sandbox / "home" / ".codex" / "agents"
+            repo_skill = sandbox / "repo" / ".agents" / "skills" / "wise-owl"
+            repo_agents = sandbox / "repo" / ".codex" / "agents"
+
+            self.assertEqual(errors, [])
+            self.assertTrue((sandbox / "repo" / "AGENTS.md").is_file())
+            for agents_dir in (user_agents, repo_agents):
+                with self.subTest(agents_dir=agents_dir):
+                    self.assertEqual(
+                        {path.name for path in agents_dir.glob("*_owl.toml")},
+                        {"logic_owl.toml", "guardian_owl.toml", "proof_owl.toml", "prime_owl.toml"},
+                    )
+
+            command_lines = [" ".join(map(str, command)) for command in commands]
+            self.assertTrue(any("--scope repo --patch-agents-md" in line for line in command_lines))
+            self.assertTrue(any("--scope repo --check" in line for line in command_lines))
+            for skill in (user_skill, repo_skill):
+                validator = str(skill / "scripts" / "wise_owl_validate_packet.py")
+                with self.subTest(skill=skill):
+                    validator_commands = [line for line in command_lines if validator in line]
+                    self.assertTrue(any("critic_valid_blocked.json" in line for line in validator_commands))
+                    self.assertTrue(
+                        any("critic_invalid_blocked_without_blocking.json" in line for line in validator_commands)
+                    )
+
     def test_ci_uses_the_canonical_release_verifier(self):
         workflow = ROOT / ".github" / "workflows" / "verify.yml"
         self.assertTrue(workflow.is_file())

@@ -9,6 +9,7 @@
 - Clarified all-rejected Prime passes; all valid v0.1 packet shapes remain valid.
 - Made malformed JSON packets return validation errors instead of tracebacks.
 - Hardened the release gate against missing suites and zero-test discovery.
+- Extended the release gate to exercise sandboxed user and repo installations, installed validators, agent discovery, and repo policy discovery.
 - Added a safe migration for the exact generated v0.1 AGENTS.md policy and controlled conflicts for customized policy blocks.
 - Added installation checks, managed upgrades, and safe uninstall behavior.
 - Added privacy-safe `--check --json` output with stable issue codes, manifest-scope and legacy-agent diagnostics, and explicit version/update semantics.

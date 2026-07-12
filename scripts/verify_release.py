@@ -245,10 +245,40 @@ def installer_smoke(root: Path, sandbox: Path) -> list[str]:
         ([sys.executable, str(installer), "--scope", "user"], "install"),
         ([sys.executable, str(installer), "--scope", "user", "--check"], "check"),
         ([sys.executable, str(installer), "--scope", "user"], "second install"),
+        (
+            [sys.executable, str(installer), "--scope", "repo", "--patch-agents-md"],
+            "repo install",
+        ),
+        ([sys.executable, str(installer), "--scope", "repo", "--check"], "repo check"),
     ):
         code, stdout, stderr = run_command(command, repo_target, env)
         if code != 0:
             errors.append(f"installer {label} failed:\n{stdout}{stderr}")
+
+    installed_copies = (
+        skills_home / "skills" / "wise-owl",
+        repo_target / ".agents" / "skills" / "wise-owl",
+    )
+    fixture_cases = (
+        (root / "tests" / "fixtures" / "critic_valid_blocked.json", 0),
+        (root / "tests" / "fixtures" / "critic_invalid_blocked_without_blocking.json", 1),
+    )
+    for skill in installed_copies:
+        validator = skill / "scripts" / "wise_owl_validate_packet.py"
+        for fixture, expected in fixture_cases:
+            command = [sys.executable, str(validator), "--type", "critic", "--file", str(fixture)]
+            code, stdout, stderr = run_command(command, repo_target, env)
+            if code != expected:
+                errors.append(
+                    f"installed validator {validator} expected exit {expected}, got {code}:\n{stdout}{stderr}"
+                )
+
+    for agents_dir in (codex_home / "agents", repo_target / ".codex" / "agents"):
+        for name in AGENTS:
+            if not (agents_dir / name).is_file():
+                errors.append(f"installed agent is not discoverable: {agents_dir / name}")
+    if not (repo_target / "AGENTS.md").is_file():
+        errors.append("installed repo policy is not discoverable: AGENTS.md")
     return errors
 
 

@@ -12,7 +12,7 @@ Run the canonical gate from any working directory:
 python3 scripts/verify_release.py
 ```
 
-The gate checks required files, version metadata, complete plugin drift, Python compilation, all unit tests with a nonzero discovery count, direct valid and invalid packet fixtures, a fully sandboxed install/check/reinstall cycle, and generated cache cleanliness.
+The gate checks required files, version metadata, complete plugin drift, Python compilation, all unit tests with a nonzero discovery count, direct valid and invalid packet fixtures, and generated cache cleanliness. Its fully sandboxed installer smoke test exercises user install/check/reinstall and repo install/check lifecycles, discovers installed agent TOMLs and the repo policy, and runs each installed validator copy against known valid and invalid critic fixtures.
 
 Static-only verification is available for fast packaging checks:
 
