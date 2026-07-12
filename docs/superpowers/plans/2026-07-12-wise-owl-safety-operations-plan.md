@@ -311,4 +311,3 @@ Expected: only intended branch commits and no uncommitted generated drift.
 - [ ] **Step 4: Run Wise Owl Full Council final review**
 
 Build a complete Review Packet from the branch diff and fresh checks. Validate every critic and Prime packet with `--mode full` and full source accounting. Apply accepted blockers and rerun affected checks.
-
