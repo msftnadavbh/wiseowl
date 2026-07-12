@@ -62,7 +62,7 @@ The archive is written to `dist/wise-owl-v0.2.0.zip`, with a standard SHA-256 si
 - `dist/`, `build/`, `coverage/`
 - logs and temporary run artifacts
 - symlinks
-- internal `superpowers/` planning artifacts
+- internal `docs/superpowers/` planning artifacts
 
 ## Plugin Skeleton
 

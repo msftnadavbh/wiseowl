@@ -16,7 +16,7 @@ ROOT_FILES = ("README.md", "install.py", "LICENSE", "CHANGELOG.md", "AGENTS.md",
 ROOT_DIRS = (".agents", ".github", "docs", "tests", "scripts", "wise-owl-plugin", "assets")
 CODEX_FILES = (".codex/config.toml",)
 CODEX_AGENT_DIR = Path(".codex/agents")
-EXCLUDED_PARTS = {".git", "dist", "build", "coverage", "superpowers", "__pycache__", ".pytest_cache", ".venv", "venv", "node_modules", "tmp", "temp"}
+EXCLUDED_PARTS = {".git", "dist", "build", "coverage", "__pycache__", ".pytest_cache", ".venv", "venv", "node_modules", "tmp", "temp"}
 EXCLUDED_SUFFIXES = {".pyc", ".pyo", ".log"}
 EXCLUDED_NAMES = {".DS_Store", ".wise-owl-install.json"}
 
@@ -42,6 +42,8 @@ def should_include(path: Path, root: Path | None = None) -> bool:
     try:
         parts = path.relative_to(root).parts if root is not None else path.parts
     except ValueError:
+        return False
+    if parts[:2] == ("docs", "superpowers"):
         return False
     if any(part in EXCLUDED_PARTS for part in parts):
         return False

@@ -132,6 +132,22 @@ class ReleaseScriptTests(unittest.TestCase):
         self.assertFalse(any(path.startswith("dist/") for path in files))
         self.assertFalse(any("__pycache__" in path for path in files))
 
+    def test_archive_excludes_only_docs_superpowers_planning_artifacts(self):
+        build_release_archive = load_script("build_release_archive")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            planning = root / "docs" / "superpowers" / "plan.md"
+            public = root / "assets" / "superpowers" / "guide.md"
+            planning.parent.mkdir(parents=True)
+            public.parent.mkdir(parents=True)
+            planning.write_text("internal", encoding="utf-8")
+            public.write_text("public", encoding="utf-8")
+
+            files = {path.as_posix() for path in build_release_archive.iter_files(root)}
+
+        self.assertNotIn("docs/superpowers/plan.md", files)
+        self.assertIn("assets/superpowers/guide.md", files)
+
     def test_release_scripts_resolve_root_from_their_file(self):
         verify_release = load_script("verify_release")
         build_release_archive = load_script("build_release_archive")

@@ -51,7 +51,7 @@ Build the local archive only after the gate passes:
 python3 scripts/build_release_archive.py
 ```
 
-The version comes from `wise-owl-plugin/.codex-plugin/plugin.json`, so the current outputs are `dist/wise-owl-v0.2.0.zip` and `dist/wise-owl-v0.2.0.zip.sha256`. Archive entries use fixed metadata for reproducible builds, and symlinks are excluded so files outside the release root cannot be copied into the archive. Verify the sidecar with `(cd dist && shasum -a 256 -c wise-owl-v0.2.0.zip.sha256)`, then inspect the archive before tagging.
+The version comes from `wise-owl-plugin/.codex-plugin/plugin.json`, so the current outputs are `dist/wise-owl-v0.2.0.zip` and `dist/wise-owl-v0.2.0.zip.sha256`. Archive entries use fixed metadata for reproducible builds. For a static release tree, the builder excludes symlinks and rejects selected paths that resolve outside the release root. This protection does not cover concurrent path replacement while the archive is being built. Verify the sidecar with `(cd dist && shasum -a 256 -c wise-owl-v0.2.0.zip.sha256)`, then inspect the archive before tagging.
 
 ## Dogfood
 
