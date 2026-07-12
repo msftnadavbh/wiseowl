@@ -19,8 +19,10 @@ Every Wise Owl final response must use the `[WISE_OWL_REVIEW]` bracket, include 
 
 Before spawning critics, finish the compact Review Packet. Before spawn, the builder must strip raw sensitive values from the Review Packet and replace them with typed placeholders such as `[REDACTED:credential]`; include only the location and sensitive-data type needed for review. After `[PARALLEL_CRITIC_PHASE]` starts, do not perform unrelated repo inspection, extra repo reads, additional tests, ad hoc validation scripts, scope expansion, edits, or mutating commands while waiting for selected critics. If the packet is incomplete after spawn, mark the review partial/invalid or restart explicitly and report it under `[EXECUTION_ISSUES]`.
 
+Spawn selected critics directly from the builder and submit all spawn requests before waiting; do not delegate a council through an intermediate subagent that consumes a reviewer slot. Validate Prime Owl immediately. If invalid, give the same Prime Owl the validator errors and exact schema for one correction attempt. A valid correction is the selected Prime packet and may complete the review; a second invalid packet makes it partial.
+
 Report model diversity honestly, for example `all selected reviewers configured with gpt-5.5`, `Prime Owl gpt-5.5 high; Logic Owl/Proof Owl gpt-5.4-mini high`, or `unavailable`.
 
-If any selected reviewer fails, times out, returns malformed JSON, fails packet validation, or cannot be closed cleanly, set `Review status: partial`. Do not claim Prime Owl adjudication if Prime Owl was not run.
+If a selected critic fails, times out, returns malformed JSON, fails packet validation, or cannot be closed cleanly, set `Review status: partial`. Prime Owl makes the review partial only if its single correction attempt also fails validation. Do not claim Prime Owl adjudication if Prime Owl was not run.
 
 Empty bracket sections may be `none`.

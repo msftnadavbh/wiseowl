@@ -56,7 +56,7 @@ Wise Owl mode selection is policy-guided through SKILL.md and AGENTS.md, not a d
 - Wise Owl Security: Guardian Owl, then Prime Owl for narrowly security/privacy-only review, secret handling, auth boundary checks, third-party AI data exposure, or protected data review.
 - Wise Owl Full Council: Logic Owl + Guardian Owl + Proof Owl in parallel, then Prime Owl for auth/authz, secrets/tokens, third-party AI/model provider context, protected student/customer/personal data, MCP/tool execution, filesystem/network boundaries, production writes, cloud/IaC permissions, persistence/migrations, concurrency/state machines, public API contracts, release/CI gates, or explicit Full Council.
 
-Parallel critic execution is prompt/runtime guidance where Codex supports it, not a local scheduler. Lite runs Logic Owl and then Prime Owl. Standard runs Logic Owl and Proof Owl together; Full Council runs Logic Owl, Guardian Owl, and Proof Owl together. Prime Owl runs only after selected critic packets are received or the run is declared partial.
+Parallel critic execution is prompt/runtime guidance where Codex supports it, not a local scheduler. The builder starts selected critics directly and submits every spawn before waiting; it does not delegate the council through an intermediate subagent that consumes a reviewer slot. Lite runs Logic Owl and then Prime Owl. Standard runs Logic Owl and Proof Owl together; Full Council runs Logic Owl, Guardian Owl, and Proof Owl together. Prime Owl runs only after selected critic packets are received or the run is declared partial.
 
 ## Compact Review Packet
 
@@ -74,8 +74,9 @@ For Final Review, start from `git diff --stat`, changed-file diffs, test/check o
 2. Collect one valid JSON critic packet from each reviewer.
 3. Validate packet shape and stable source IDs.
 4. Send the valid packets to `prime_owl`.
-5. Prime Owl accepts, merges, or rejects every critic finding exactly once.
-6. Builder applies accepted blocking findings, reruns checks, and reports execution issues.
+5. Validate Prime Owl immediately. On failure, give the same Prime Owl the validator errors and exact schema for one correction attempt. A valid correction becomes the selected Prime packet; a second failure makes the review partial.
+6. Prime Owl accepts, merges, or rejects every critic finding exactly once.
+7. Builder applies accepted blocking findings, reruns checks, and reports execution issues.
 
 Full Council is complete only when all three critic packets and the Prime Owl packet are valid.
 
@@ -236,7 +237,7 @@ Use Wise Owl Stuck Review after these two failed check loops. Focus on the wrong
 
 ## Partial Reviews And Brackets
 
-Report a review as partial when any reviewer fails to start, times out, returns malformed output, cannot be closed cleanly, or fails packet validation.
+Report a review as partial when a critic fails to start, times out, returns malformed output, cannot be closed cleanly, or fails packet validation. Prime Owl makes the review partial only when its one validator-guided correction attempt also fails. Record a recovered Prime correction as an execution issue without downgrading an otherwise complete review.
 
 Prime Owl may judge available packets only if the final answer says the run was partial. Do not say all three critics returned unless all three valid packets were received and parsed.
 

@@ -71,6 +71,8 @@ Review Packet construction must finish before spawning critics.
 For Final Review, start from `git diff --stat`, changed-file diffs, checks output, and relevant AGENTS.md constraints. Reviewers should inspect extra files only when necessary and should not rescan the entire repo unless the change affects cross-cutting contracts.
 
 [PARALLEL_CRITIC_PHASE]
+Spawn the selected critics directly from the builder. Do not delegate the council to an intermediate subagent when that would consume a reviewer slot. Submit all selected critic spawn requests before waiting so a four-slot runtime can run a Full Council without serializing Proof Owl.
+
 Spawn selected critics concurrently where Codex supports parallel subagents:
 - logic_owl
 - guardian_owl
@@ -93,12 +95,14 @@ If the Review Packet is incomplete after critics are spawned, mark the review pa
 
 [PRIME_REDUCTION_PHASE]
 Send the Review Packet and all valid critic packets to `prime_owl`. Prime Owl must return only the Prime Owl JSON schema.
+
+Validate Prime Owl's packet immediately. If validation fails, send the validation errors and the exact Prime schema back to the same Prime Owl for one correction attempt. Validate the corrected packet; a valid correction is the selected Prime packet and the review may complete. If it still fails, stop and report the review as partial. Do not start a second council or silently repair JSON on Prime Owl's behalf.
 [/PRIME_REDUCTION_PHASE]
 
 Lifecycle rules:
 - Lite is complete-lite only when both Logic Owl and Prime Owl return valid packets. If Logic Owl fails or returns a malformed packet, the review is partial and Prime Owl must not turn empty input into a completed Lite review.
 - Full Council is complete only when Logic Owl, Guardian Owl, Proof Owl, and Prime Owl packets are valid.
-- If a reviewer fails, times out, returns malformed JSON, or cannot be closed cleanly, the run is partial.
+- If a critic fails, times out, returns malformed JSON, or cannot be closed cleanly, the run is partial. Prime Owl makes the run partial only when its single correction attempt also fails validation.
 - Prime Owl may judge available packets only when the builder labels the result as partial.
 - Do not say "all critics returned" unless all selected critics returned valid packets.
 
@@ -320,7 +324,7 @@ Proof Owl:
 [/WISE_OWL_REVIEW]
 ```
 
-If a role was not used in the selected mode, say `not spawned`. Execution issues must mention failed subagent start, timeout, malformed packet, missing critic packet, failed packet validation, failed or unclean agent closure, Prime Owl not run, or fallback behavior used. If any of those happened, set `Review status: partial` and do not claim a complete Full Council review.
+If a role was not used in the selected mode, say `not spawned`. Execution issues must mention failed subagent start, timeout, malformed packet, missing critic packet, failed packet validation, failed or unclean agent closure, Prime Owl not run, fallback behavior used, or a recovered Prime correction. A recovered Prime correction may complete; unrecovered validation failures and all other listed reviewer failures require `Review status: partial`.
 
 Empty bracket sections are allowed as `none`.
 

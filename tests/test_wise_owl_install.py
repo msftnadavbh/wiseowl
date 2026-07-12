@@ -1347,9 +1347,24 @@ class WiseOwlInstallTests(unittest.TestCase):
             "not merge a blocking security finding with non-blocking documentation",
             "Pass/no-finding critic results must still validate",
             "A raw `pass` packet missing those required fields is malformed",
+            "Spawn the selected critics directly from the builder",
+            "one correction attempt",
         ]
         for text in required:
             self.assertIn(text, skill)
+
+        prime = (ROOT / ".codex" / "agents" / "prime_owl.toml").read_text()
+        self.assertIn("self-check the completed object", prime)
+        self.assertIn("Do not return the critic schema", prime)
+
+        for surface in (
+            (ROOT / "AGENTS.md").read_text(),
+            self.installer.AGENTS_POLICY,
+            (ROOT / "docs" / "wise-owl.md").read_text(),
+        ):
+            self.assertIn("selected critics directly", surface)
+            self.assertIn("one correction attempt", surface)
+            self.assertIn("valid correction", surface)
 
     def test_lite_and_prime_pass_contracts_match_across_public_surfaces(self):
         surfaces = {

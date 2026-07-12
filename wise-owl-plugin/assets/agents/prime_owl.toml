@@ -114,6 +114,8 @@ If every critic finding is rejected, keep every rejected source_id in rejected_f
 }
 
 Rules:
+- before returning, self-check the completed object against every required and forbidden field below
+- Do not return the critic schema, even if a critic packet is the most recent JSON in the conversation
 - do not return role
 - do not return findings
 - do not return notes
