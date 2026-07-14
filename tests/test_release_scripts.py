@@ -6,6 +6,7 @@ import tempfile
 import unittest
 import zipfile
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -23,6 +24,78 @@ class ReleaseScriptTests(unittest.TestCase):
     def test_verify_release_passes_current_repo(self):
         verify_release = load_script("verify_release")
         self.assertEqual(verify_release.validate(ROOT), [])
+
+    def test_release_requires_core_test_modules(self):
+        verify_release = load_script("verify_release")
+        for relative in (
+            "tests/test_release_scripts.py",
+            "tests/test_wise_owl_install.py",
+            "tests/test_wise_owl_validate_packet.py",
+        ):
+            with self.subTest(relative=relative):
+                self.assertIn(relative, verify_release.REQUIRED_FILES)
+
+    def test_unit_test_checks_reject_zero_discovered_tests(self):
+        verify_release = load_script("verify_release")
+        with mock.patch.object(verify_release, "run_command", return_value=(0, "", "Ran 0 tests in 0.000s\n\nOK\n")):
+            errors = verify_release.unit_test_checks(ROOT)
+        self.assertEqual(errors, ["unit test discovery reported zero tests"])
+
+    def test_unit_test_checks_reject_missing_test_summary(self):
+        verify_release = load_script("verify_release")
+        with mock.patch.object(verify_release, "run_command", return_value=(0, "", "OK\n")):
+            errors = verify_release.unit_test_checks(ROOT)
+        self.assertEqual(errors, ["unit test discovery did not report a test count"])
+
+    def test_unit_test_checks_ignore_positive_summary_lookalike_on_stdout(self):
+        verify_release = load_script("verify_release")
+        with mock.patch.object(
+            verify_release,
+            "run_command",
+            return_value=(0, "Ran 123 tests in 1.234s\n", "OK\n"),
+        ):
+            errors = verify_release.unit_test_checks(ROOT)
+        self.assertEqual(errors, ["unit test discovery did not report a test count"])
+
+    def test_unit_test_checks_use_real_stderr_summary_over_stdout_lookalike(self):
+        verify_release = load_script("verify_release")
+        with mock.patch.object(
+            verify_release,
+            "run_command",
+            return_value=(
+                0,
+                "Ran 123 tests in 1.234s\n",
+                "progress: Ran 456 tests in 2.345s\nRan 0 tests in 0.000s\n\nOK\n",
+            ),
+        ):
+            errors = verify_release.unit_test_checks(ROOT)
+        self.assertEqual(errors, ["unit test discovery reported zero tests"])
+
+    def test_unit_test_checks_use_final_complete_stderr_summary(self):
+        verify_release = load_script("verify_release")
+        stderr = "Ran 0 tests in 0.000s\nRan 123 tests in 1.234s\n\nOK\n"
+        with mock.patch.object(verify_release, "run_command", return_value=(0, "", stderr)):
+            errors = verify_release.unit_test_checks(ROOT)
+        self.assertEqual(errors, [])
+
+    def test_unit_test_checks_ignore_incomplete_final_summary_lookalike(self):
+        verify_release = load_script("verify_release")
+        stderr = "Ran 123 tests in 1.234s and kept going\n\nOK\n"
+        with mock.patch.object(verify_release, "run_command", return_value=(0, "", stderr)):
+            errors = verify_release.unit_test_checks(ROOT)
+        self.assertEqual(errors, ["unit test discovery did not report a test count"])
+
+    def test_unit_test_checks_preserve_test_failures(self):
+        verify_release = load_script("verify_release")
+        with mock.patch.object(verify_release, "run_command", return_value=(1, "failed stdout", "failed stderr")):
+            errors = verify_release.unit_test_checks(ROOT)
+        self.assertEqual(errors, ["unit tests failed:\nfailed stdoutfailed stderr"])
+
+    def test_unit_test_checks_accept_positive_discovery_count(self):
+        verify_release = load_script("verify_release")
+        with mock.patch.object(verify_release, "run_command", return_value=(0, "", "Ran 123 tests in 1.234s\n\nOK\n")):
+            errors = verify_release.unit_test_checks(ROOT)
+        self.assertEqual(errors, [])
 
     def test_archive_excludes_generated_paths(self):
         build_release_archive = load_script("build_release_archive")
@@ -58,6 +131,22 @@ class ReleaseScriptTests(unittest.TestCase):
         self.assertTrue(expected.issubset(files))
         self.assertFalse(any(path.startswith("dist/") for path in files))
         self.assertFalse(any("__pycache__" in path for path in files))
+
+    def test_archive_excludes_only_docs_superpowers_planning_artifacts(self):
+        build_release_archive = load_script("build_release_archive")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            planning = root / "docs" / "superpowers" / "plan.md"
+            public = root / "assets" / "superpowers" / "guide.md"
+            planning.parent.mkdir(parents=True)
+            public.parent.mkdir(parents=True)
+            planning.write_text("internal", encoding="utf-8")
+            public.write_text("public", encoding="utf-8")
+
+            files = {path.as_posix() for path in build_release_archive.iter_files(root)}
+
+        self.assertNotIn("docs/superpowers/plan.md", files)
+        self.assertIn("assets/superpowers/guide.md", files)
 
     def test_release_scripts_resolve_root_from_their_file(self):
         verify_release = load_script("verify_release")
@@ -120,6 +209,113 @@ class ReleaseScriptTests(unittest.TestCase):
                 timestamps = {item.date_time for item in handle.infolist()}
         self.assertEqual(timestamps, {(1980, 1, 1, 0, 0, 0)})
 
+    def test_archive_rejects_symlinks(self):
+        build_release_archive = load_script("build_release_archive")
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            root = base / "tmp" / "release"
+            (root / "docs").mkdir(parents=True)
+            internal = root / "docs" / "internal.md"
+            internal.write_text("internal", encoding="utf-8")
+            external = base / "external.md"
+            external.write_text("external", encoding="utf-8")
+            (root / "docs" / "internal-link.md").symlink_to(internal)
+            (root / "docs" / "external-link.md").symlink_to(external)
+
+            files = {path.as_posix() for path in build_release_archive.iter_files(root)}
+
+        self.assertIn("docs/internal.md", files)
+        self.assertNotIn("docs/internal-link.md", files)
+        self.assertNotIn("docs/external-link.md", files)
+
+    def test_archive_rejects_symlinked_directories(self):
+        build_release_archive = load_script("build_release_archive")
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            for name in ("internal", "external"):
+                with self.subTest(name=name):
+                    root = base / name / "release"
+                    root.mkdir(parents=True)
+                    target = root / "content" if name == "internal" else base / "outside"
+                    target.mkdir(parents=True)
+                    (target / "linked.md").write_text(name, encoding="utf-8")
+                    (root / "docs").symlink_to(target, target_is_directory=True)
+
+                    files = {path.as_posix() for path in build_release_archive.iter_files(root)}
+
+                    self.assertNotIn("docs/linked.md", files)
+
+    def test_archive_build_is_reproducible_and_checksummed(self):
+        build_release_archive = load_script("build_release_archive")
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            root = base / "release"
+            manifest = root / "wise-owl-plugin" / ".codex-plugin" / "plugin.json"
+            manifest.parent.mkdir(parents=True)
+            manifest.write_text('{"version": "0.2.0"}', encoding="utf-8")
+            (root / "README.md").write_text("Wise Owl\n", encoding="utf-8")
+
+            first = build_release_archive.build_archive(root, base / "first")
+            second = build_release_archive.build_archive(root, base / "second")
+            first_checksum = first.with_name(f"{first.name}.sha256")
+            second_checksum = second.with_name(f"{second.name}.sha256")
+
+            self.assertEqual(first.read_bytes(), second.read_bytes())
+            self.assertEqual(
+                first_checksum.read_text(encoding="utf-8"),
+                f"{build_release_archive.archive_sha256(first)}  {first.name}\n",
+            )
+            self.assertEqual(
+                second_checksum.read_text(encoding="utf-8"),
+                f"{build_release_archive.archive_sha256(second)}  {second.name}\n",
+            )
+
+    def test_archive_rejects_unsafe_version_filename_components(self):
+        build_release_archive = load_script("build_release_archive")
+        for version in ("../escape", "1/../../escape", "1\\escape", ".", ".."):
+            with self.subTest(version=version), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory) / "release"
+                manifest = root / "wise-owl-plugin" / ".codex-plugin" / "plugin.json"
+                manifest.parent.mkdir(parents=True)
+                manifest.write_text(json.dumps({"version": version}), encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, "safe filename component"):
+                    build_release_archive.build_archive(root, Path(directory) / "dist")
+
+    def test_archive_and_checksum_are_direct_output_children(self):
+        build_release_archive = load_script("build_release_archive")
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            root = base / "release"
+            manifest = root / "wise-owl-plugin" / ".codex-plugin" / "plugin.json"
+            manifest.parent.mkdir(parents=True)
+            manifest.write_text('{"version": "0.2.0"}', encoding="utf-8")
+            (root / "README.md").write_text("Wise Owl\n", encoding="utf-8")
+            output = base / "dist"
+
+            archive = build_release_archive.build_archive(root, output)
+            checksum = archive.with_name(f"{archive.name}.sha256")
+
+            self.assertEqual(archive.resolve().parent, output.resolve())
+            self.assertEqual(checksum.resolve().parent, output.resolve())
+
+    def test_archive_rejects_output_symlinks_that_escape_output_directory(self):
+        build_release_archive = load_script("build_release_archive")
+        for escaped_name in ("wise-owl-v0.2.0.zip", "wise-owl-v0.2.0.zip.sha256"):
+            with self.subTest(escaped_name=escaped_name), tempfile.TemporaryDirectory() as directory:
+                base = Path(directory)
+                root = base / "release"
+                manifest = root / "wise-owl-plugin" / ".codex-plugin" / "plugin.json"
+                manifest.parent.mkdir(parents=True)
+                manifest.write_text('{"version": "0.2.0"}', encoding="utf-8")
+                output = base / "dist"
+                output.mkdir()
+                outside = base / "outside" / escaped_name
+                outside.parent.mkdir()
+                (output / escaped_name).symlink_to(outside)
+
+                with self.assertRaisesRegex(ValueError, "direct child"):
+                    build_release_archive.build_archive(root, output)
+
     def test_installer_smoke_is_confined_to_supplied_sandbox(self):
         verify_release = load_script("verify_release")
         with tempfile.TemporaryDirectory() as directory:
@@ -129,6 +325,46 @@ class ReleaseScriptTests(unittest.TestCase):
         self.assertEqual(errors, [])
         self.assertTrue(written)
         self.assertTrue(all(str(path).startswith(str(sandbox)) for path in written))
+
+    def test_installer_smoke_exercises_installed_user_and_repo_copies(self):
+        verify_release = load_script("verify_release")
+        real_run_command = verify_release.run_command
+        commands = []
+
+        def record_command(command, cwd, env=None):
+            commands.append(command)
+            return real_run_command(command, cwd, env)
+
+        with tempfile.TemporaryDirectory() as directory:
+            sandbox = Path(directory)
+            with mock.patch.object(verify_release, "run_command", side_effect=record_command):
+                errors = verify_release.installer_smoke(ROOT, sandbox)
+
+            user_skill = sandbox / "home" / ".agents" / "skills" / "wise-owl"
+            user_agents = sandbox / "home" / ".codex" / "agents"
+            repo_skill = sandbox / "repo" / ".agents" / "skills" / "wise-owl"
+            repo_agents = sandbox / "repo" / ".codex" / "agents"
+
+            self.assertEqual(errors, [])
+            self.assertTrue((sandbox / "repo" / "AGENTS.md").is_file())
+            for agents_dir in (user_agents, repo_agents):
+                with self.subTest(agents_dir=agents_dir):
+                    self.assertEqual(
+                        {path.name for path in agents_dir.glob("*_owl.toml")},
+                        {"logic_owl.toml", "guardian_owl.toml", "proof_owl.toml", "prime_owl.toml"},
+                    )
+
+            command_lines = [" ".join(map(str, command)) for command in commands]
+            self.assertTrue(any("--scope repo --patch-agents-md" in line for line in command_lines))
+            self.assertTrue(any("--scope repo --check" in line for line in command_lines))
+            for skill in (user_skill, repo_skill):
+                validator = str(skill / "scripts" / "wise_owl_validate_packet.py")
+                with self.subTest(skill=skill):
+                    validator_commands = [line for line in command_lines if validator in line]
+                    self.assertTrue(any("critic_valid_blocked.json" in line for line in validator_commands))
+                    self.assertTrue(
+                        any("critic_invalid_blocked_without_blocking.json" in line for line in validator_commands)
+                    )
 
     def test_ci_uses_the_canonical_release_verifier(self):
         workflow = ROOT / ".github" / "workflows" / "verify.yml"

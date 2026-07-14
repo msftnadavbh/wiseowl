@@ -66,6 +66,21 @@ def prime_packet(verdict, accepted_findings):
 
 
 class ValidatePacketTest(unittest.TestCase):
+    def run_validator_text(self, raw_json, packet_type):
+        with tempfile.NamedTemporaryFile("w", suffix=".json", encoding="utf-8", delete=False) as handle:
+            handle.write(raw_json)
+            packet_path = Path(handle.name)
+        try:
+            return subprocess.run(
+                [sys.executable, str(SCRIPT), "--type", packet_type, "--file", str(packet_path)],
+                cwd=ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        finally:
+            packet_path.unlink(missing_ok=True)
+
     def run_validator(self, packet, packet_type):
         with tempfile.NamedTemporaryFile("w", suffix=".json", encoding="utf-8", delete=False) as handle:
             json.dump(packet, handle)
@@ -213,6 +228,118 @@ class ValidatePacketTest(unittest.TestCase):
         result = self.run_validator(packet, "critic")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("duplicate critic finding id", result.stderr)
+
+    def test_adversarial_json_value_matrix_never_raises_tracebacks(self):
+        malformed_values = (
+            ("null", None),
+            ("string", "malformed"),
+            ("number", 7),
+            ("bool", True),
+            ("list", [None]),
+            ("object", {}),
+        )
+        cases = []
+
+        for value_name, value in malformed_values:
+            cases.extend(
+                (
+                    (f"critic-top-level-{value_name}", "critic", copy.deepcopy(value), None, None),
+                    (f"prime-top-level-{value_name}", "prime", copy.deepcopy(value), None, None),
+                )
+            )
+
+            critic_findings = copy.deepcopy(VALID_CRITIC)
+            critic_findings["findings"] = copy.deepcopy(value)
+            cases.append((f"critic-findings-{value_name}", "critic", critic_findings, None, None))
+
+            critic_finding_entry = copy.deepcopy(VALID_CRITIC)
+            critic_finding_entry["findings"] = [copy.deepcopy(value)]
+            cases.append((f"critic-finding-entry-{value_name}", "critic", critic_finding_entry, None, None))
+
+            critic_notes = copy.deepcopy(VALID_CRITIC)
+            critic_notes["notes"] = copy.deepcopy(value)
+            cases.append((f"critic-notes-{value_name}", "critic", critic_notes, None, None))
+
+            accepted_findings = copy.deepcopy(VALID_PRIME)
+            accepted_findings["accepted_findings"] = copy.deepcopy(value)
+            cases.append((f"prime-accepted-findings-{value_name}", "prime", accepted_findings, None, None))
+
+            accepted_entry = copy.deepcopy(VALID_PRIME)
+            accepted_entry["accepted_findings"] = [copy.deepcopy(value)]
+            cases.append((f"prime-accepted-entry-{value_name}", "prime", accepted_entry, None, None))
+
+            rejected_findings = copy.deepcopy(VALID_PRIME)
+            rejected_findings["rejected_findings"] = copy.deepcopy(value)
+            cases.append((f"prime-rejected-findings-{value_name}", "prime", rejected_findings, None, None))
+
+            rejected_entry = copy.deepcopy(VALID_PRIME)
+            rejected_entry["rejected_findings"] = [copy.deepcopy(value)]
+            cases.append((f"prime-rejected-entry-{value_name}", "prime", rejected_entry, None, None))
+
+            accepted_source_ids = copy.deepcopy(VALID_PRIME)
+            accepted_source_ids["accepted_findings"][0]["source_ids"] = copy.deepcopy(value)
+            cases.append((f"prime-accepted-source-ids-{value_name}", "prime", accepted_source_ids, None, None))
+
+            rejected_source_ids = copy.deepcopy(VALID_PRIME)
+            rejected_source_ids["rejected_findings"][0]["source_ids"] = copy.deepcopy(value)
+            cases.append((f"prime-rejected-source-ids-{value_name}", "prime", rejected_source_ids, None, None))
+
+            builder_instructions = copy.deepcopy(VALID_PRIME)
+            builder_instructions["builder_instructions"] = copy.deepcopy(value)
+            cases.append((f"prime-builder-instructions-{value_name}", "prime", builder_instructions, None, None))
+
+            cases.append(
+                (
+                    f"prime-supplied-critic-{value_name}",
+                    "prime",
+                    prime_packet("pass", []),
+                    [copy.deepcopy(value)],
+                    "lite",
+                )
+            )
+
+        enum_cases = {
+            "critic-role-list": (VALID_CRITIC, ("role",), []),
+            "critic-verdict-object": (VALID_CRITIC, ("verdict",), {}),
+            "critic-severity-list": (VALID_CRITIC, ("findings", 0, "severity"), []),
+            "critic-category-object": (VALID_CRITIC, ("findings", 0, "category"), {}),
+            "critic-confidence-null": (VALID_CRITIC, ("findings", 0, "confidence"), None),
+            "prime-verdict-list": (VALID_PRIME, ("verdict",), []),
+            "prime-severity-object": (VALID_PRIME, ("accepted_findings", 0, "severity"), {}),
+            "prime-rejection-reason-list": (VALID_PRIME, ("rejected_findings", 0, "reason"), []),
+        }
+        for name, (base, path, value) in enum_cases.items():
+            packet = copy.deepcopy(base)
+            target = packet
+            for part in path[:-1]:
+                target = target[part]
+            target[path[-1]] = value
+            packet_type = "critic" if name.startswith("critic-") else "prime"
+            cases.append((name, packet_type, packet, None, None))
+
+        for name, packet_type, packet, critic_packets, mode in cases:
+            with self.subTest(name=name):
+                if critic_packets is None:
+                    result = self.run_validator(packet, packet_type)
+                else:
+                    result = self.run_prime_with_critics(packet, critic_packets, mode=mode)
+                self.assertEqual(result.returncode, 1, result.stderr)
+                self.assertIn("Wise Owl packet is invalid", result.stderr)
+                self.assertNotIn("Traceback", result.stderr)
+
+    def test_syntactically_valid_json_parser_limits_fail_cleanly(self):
+        integer_limit = sys.get_int_max_str_digits() if hasattr(sys, "get_int_max_str_digits") else 4300
+        oversized_integer = "9" * max(integer_limit + 1, 5000)
+        nesting_depth = max(sys.getrecursionlimit() + 100, 500_000)
+        deeply_nested = "[" * nesting_depth + "null" + "]" * nesting_depth
+
+        for name, raw_json in (("oversized-integer", oversized_integer), ("deeply-nested", deeply_nested)):
+            with self.subTest(name=name):
+                result = self.run_validator_text(raw_json, "critic")
+                self.assertEqual(result.returncode, 1, result.stderr)
+                self.assertIn("Wise Owl packet is invalid", result.stderr)
+                self.assertIn("invalid JSON", result.stderr)
+                self.assertNotIn("Traceback", result.stderr)
 
     def test_valid_prime_owl_packet_passes(self):
         result = self.run_validator(VALID_PRIME, "prime")
@@ -497,11 +624,52 @@ class ValidatePacketTest(unittest.TestCase):
         result = self.run_prime_with_critics(packet, [logic, proof], mode="standard")
         self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_lite_mode_rejects_critic_packets(self):
-        packet = prime_packet("pass", [])
-        result = self.run_prime_with_critics(packet, [VALID_CRITIC], mode="lite")
+    def test_lite_mode_accepts_logic_then_prime_for_every_verdict(self):
+        cases = (
+            ("critic_lite_logic_pass.json", "prime_lite_pass.json"),
+            ("critic_lite_logic_caution.json", "prime_lite_caution.json"),
+            ("critic_lite_logic_blocked.json", "prime_lite_fix_required.json"),
+        )
+        for critic_name, prime_name in cases:
+            with self.subTest(prime_name=prime_name):
+                critic = json.loads((FIXTURES / critic_name).read_text())
+                packet = json.loads((FIXTURES / prime_name).read_text())
+                result = self.run_prime_with_critics(packet, [critic], mode="lite")
+                self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_lite_mode_requires_logic(self):
+        result = self.run_prime_with_critics(prime_packet("pass", []), [], mode="lite")
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("mode lite: unexpected critic roles logic_owl", result.stderr)
+        self.assertIn("mode lite: missing critic roles logic_owl", result.stderr)
+
+    def test_lite_mode_rejects_logic_source_without_supplied_logic_critic(self):
+        accepted = copy.deepcopy(VALID_PRIME["accepted_findings"])
+        result = self.run_prime_with_critics(prime_packet("fix_required", accepted), [], mode="lite")
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertIn("mode lite: missing critic roles logic_owl", result.stderr)
+        self.assertIn("source_ids: unknown critic findings logic_owl:E1", result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
+
+    def test_lite_mode_rejects_non_logic_reviewer(self):
+        proof = {"role": "proof_owl", "verdict": "pass", "findings": [], "notes": ["No meaningful issues found."]}
+        result = self.run_prime_with_critics(prime_packet("pass", []), [proof], mode="lite")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("mode lite: missing critic roles logic_owl", result.stderr)
+        self.assertIn("mode lite: unexpected critic roles proof_owl", result.stderr)
+
+    def test_prime_source_ids_are_rejected_in_lite(self):
+        critic = json.loads((FIXTURES / "critic_lite_logic_caution.json").read_text())
+        packet = json.loads((FIXTURES / "prime_lite_caution.json").read_text())
+        packet["accepted_findings"][0]["source_ids"] = ["prime_owl:P-LITE-001"]
+        result = self.run_prime_with_critics(packet, [critic], mode="lite")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("invalid source_id", result.stderr)
+
+    def test_prime_pass_can_account_for_all_rejected_findings(self):
+        critic = json.loads((FIXTURES / "critic_proof_owl_ci.json").read_text())
+        packet = json.loads((FIXTURES / "prime_pass.json").read_text())
+        result = self.run_prime_with_critics(packet, [critic])
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_security_mode_accepts_guardian_only(self):
         guardian = copy.deepcopy(VALID_CRITIC)

@@ -45,6 +45,9 @@ tests/fixtures/critic_invalid_pass_missing_notes.json
 tests/fixtures/critic_invalid_pass_non_string_note.json
 tests/fixtures/critic_invalid_pass_null_note.json
 tests/fixtures/critic_invalid_pass_with_findings.json
+tests/fixtures/critic_lite_logic_blocked.json
+tests/fixtures/critic_lite_logic_caution.json
+tests/fixtures/critic_lite_logic_pass.json
 tests/fixtures/critic_proof_owl_ci.json
 tests/fixtures/critic_release_guardian_owl.json
 tests/fixtures/critic_release_logic_owl.json
@@ -63,6 +66,9 @@ tests/fixtures/prime_invalid_overmerged_docs_security_finding.json
 tests/fixtures/prime_invalid_pass_critic_style.json
 tests/fixtures/prime_invalid_pass_missing_required_fields.json
 tests/fixtures/prime_invalid_stale_source_ids_and_verdict_mismatch.json
+tests/fixtures/prime_lite_caution.json
+tests/fixtures/prime_lite_fix_required.json
+tests/fixtures/prime_lite_pass.json
 tests/fixtures/prime_pass.json
 tests/fixtures/prime_valid_current_fix_required_api_auth_and_storage.json
 tests/fixtures/prime_valid_pass_empty.json

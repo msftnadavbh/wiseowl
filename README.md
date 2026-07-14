@@ -41,6 +41,8 @@ python3 install.py
 python3 install.py --check
 ```
 
+For automation, `python3 install.py --check --json` writes one privacy-safe JSON document to stdout. It reports stable issue codes, installed/candidate versions, update availability, and a suggested action without exposing local absolute paths or raw parser errors.
+
 Restart or reopen Codex, then ask:
 
 ```text
@@ -74,7 +76,7 @@ Start from a normal Codex prompt. Wise Owl Standard selects reviewers, collects 
 
 | Mode | Reviewers | Use It For |
 | --- | --- | --- |
-| Lite | Prime Owl only | Quick sanity checks, docs, prompts, small plans |
+| Lite | Logic Owl + Prime Owl | Quick sanity checks, docs, prompts, small plans |
 | Standard | Logic Owl + Proof Owl, then Prime Owl | Normal implementation, tests, packaging, installer changes |
 | Security | Guardian Owl, then Prime Owl | Auth, privacy, secrets, permissions, sensitive data |
 | Full Council | Logic Owl + Guardian Owl + Proof Owl, then Prime Owl | Release gates, public APIs, filesystem/network boundaries, high-risk changes |

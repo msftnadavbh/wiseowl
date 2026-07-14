@@ -12,7 +12,7 @@ Run the canonical gate from any working directory:
 python3 scripts/verify_release.py
 ```
 
-The gate checks required files, version metadata, complete plugin drift, Python compilation, all unit tests, direct valid and invalid packet fixtures, a fully sandboxed install/check/reinstall cycle, and generated cache cleanliness.
+The gate checks required files, version metadata, complete plugin drift, Python compilation, all unit tests with a nonzero discovery count, direct valid and invalid packet fixtures, and generated cache cleanliness. Its fully sandboxed installer smoke test exercises user install/check/reinstall and repo install/check lifecycles, discovers installed agent TOMLs and the repo policy, and runs each installed validator copy against known valid and invalid critic fixtures.
 
 Static-only verification is available for fast packaging checks:
 
@@ -51,7 +51,7 @@ Build the local archive only after the gate passes:
 python3 scripts/build_release_archive.py
 ```
 
-The version comes from `wise-owl-plugin/.codex-plugin/plugin.json`, so the current output is `dist/wise-owl-v0.2.0.zip`. Inspect the archive before tagging.
+The version comes from `wise-owl-plugin/.codex-plugin/plugin.json`, must be a safe filename component, and produces the direct output children `dist/wise-owl-v0.2.0.zip` and `dist/wise-owl-v0.2.0.zip.sha256`. Archive entries use fixed metadata for reproducible builds. For a static release tree, the builder excludes symlinks and rejects selected paths that resolve outside the release root. This protection does not cover concurrent path replacement while the archive is being built. Verify the sidecar with `(cd dist && shasum -a 256 -c wise-owl-v0.2.0.zip.sha256)`, then inspect the archive before tagging.
 
 ## Dogfood
 
@@ -61,7 +61,7 @@ Run Wise Owl Standard on the final diff. Validate Logic Owl and Proof Owl packet
 
 - Resolve the `v0.2.0 - Unreleased` changelog heading with the release date.
 - Run `python3 scripts/verify_release.py`.
-- Build and inspect `dist/wise-owl-v0.2.0.zip`.
+- Build, checksum-verify, and inspect `dist/wise-owl-v0.2.0.zip`.
 - Confirm `git status` contains only intended release changes.
 - Commit and tag only after review.
 - Push only the intended branch and `v0.2.0` tag.

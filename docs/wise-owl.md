@@ -51,16 +51,18 @@ Use Wise Owl for this auth change. Apply only Prime Owl blocking findings.
 Wise Owl mode selection is policy-guided through SKILL.md and AGENTS.md, not a deterministic background hook. Choose the cheapest mode that covers the risk. Escalate for security, privacy, tool execution, data boundaries, auth, secrets, protected data, filesystem/network boundaries, production writes, persistence, migrations, concurrency, public API contracts, or release gates.
 
 - No Wise Owl: trivial typo, formatting, README-only, pure explanation, tiny copy change, or dependency metadata only when the user did not ask for review.
-- Wise Owl Lite: Prime Owl only for low-risk review, sanity-check, second-opinion, docs, prompts, README updates, small plans, small test-only changes, naming cleanup, or low-risk installer/docs polish. Lite must not pretend to be full review: Selected reviewers is Prime Owl only; Logic Owl, Guardian Owl, and Proof Owl are `not spawned`; Review status is `complete-lite` when Prime Owl returns a valid packet.
+- Wise Owl Lite: Logic Owl, then Prime Owl for low-risk review, sanity-check, second-opinion, docs, prompts, README updates, small plans, small test-only changes, naming cleanup, or low-risk installer/docs polish. Lite must not pretend to be full review: Selected reviewers are Logic Owl and Prime Owl; Guardian Owl and Proof Owl are `not spawned`. Review status is `complete-lite` only when both Logic Owl and Prime Owl return valid packets.
 - Wise Owl Standard: Logic Owl + Proof Owl in parallel, then Prime Owl for normal implementation, non-security multi-file changes, API shape changes without sensitive data, test/CI changes, bug fixes, installer behavior, validator behavior, plugin packaging, or config merge logic.
 - Wise Owl Security: Guardian Owl, then Prime Owl for narrowly security/privacy-only review, secret handling, auth boundary checks, third-party AI data exposure, or protected data review.
 - Wise Owl Full Council: Logic Owl + Guardian Owl + Proof Owl in parallel, then Prime Owl for auth/authz, secrets/tokens, third-party AI/model provider context, protected student/customer/personal data, MCP/tool execution, filesystem/network boundaries, production writes, cloud/IaC permissions, persistence/migrations, concurrency/state machines, public API contracts, release/CI gates, or explicit Full Council.
 
-Parallel critic execution is prompt/runtime guidance where Codex supports it, not a local scheduler. Standard runs Logic Owl and Proof Owl together; Full Council runs Logic Owl, Guardian Owl, and Proof Owl together. Prime Owl runs only after selected critic packets are received or the run is declared partial.
+Parallel critic execution is prompt/runtime guidance where Codex supports it, not a local scheduler. The builder starts selected critics directly and submits every spawn before waiting; it does not delegate the council through an intermediate subagent that consumes a reviewer slot. Lite runs Logic Owl and then Prime Owl. Standard runs Logic Owl and Proof Owl together; Full Council runs Logic Owl, Guardian Owl, and Proof Owl together. Prime Owl runs only after selected critic packets are received or the run is declared partial.
 
 ## Compact Review Packet
 
 Before spawning reviewers, create a compact Review Packet with the user request, selected mode and reason, changed/planned files, plan or diff summary, relevant AGENTS.md constraints, targeted snippets or file references, checks run, known assumptions, and exact reviewer questions.
+
+Before spawn, strip raw sensitive values from the Review Packet and replace them with typed placeholders such as `[REDACTED:credential]`; provide only the location and sensitive-data type needed for review. Critics and Prime Owl should not repeat a raw value if one leaks into their inputs. This is best-effort instruction hygiene, not sanitizer or confidentiality enforcement.
 
 Review Packet construction must finish before spawning critics. After the parallel critic phase starts, the builder must not perform extra repo reads, additional tests, ad hoc validation scripts, scope expansion, edits, or mutating commands while waiting. Allowed work is limited to waiting for packets, recording execution issues, minimal packet parsing/validation after packets return, and starting Prime Owl after all selected packets arrive or partial failure is declared. If context is insufficient after spawn, mark the run partial/invalid or restart explicitly and report that under `[EXECUTION_ISSUES]`.
 
@@ -72,8 +74,9 @@ For Final Review, start from `git diff --stat`, changed-file diffs, test/check o
 2. Collect one valid JSON critic packet from each reviewer.
 3. Validate packet shape and stable source IDs.
 4. Send the valid packets to `prime_owl`.
-5. Prime Owl accepts, merges, or rejects every critic finding exactly once.
-6. Builder applies accepted blocking findings, reruns checks, and reports execution issues.
+5. Validate Prime Owl immediately. On failure, give the same Prime Owl the validator errors and exact schema for one correction attempt. A valid correction becomes the selected Prime packet; a second failure makes the review partial.
+6. Prime Owl accepts, merges, or rejects every critic finding exactly once.
+7. Builder applies accepted blocking findings, reruns checks, and reports execution issues.
 
 Full Council is complete only when all three critic packets and the Prime Owl packet are valid.
 
@@ -112,7 +115,7 @@ Critic `notes` must be a list of non-empty strings. Critics must include this ex
 
 A raw critic pass packet with missing, empty, blank, null, or non-string `notes` entries is malformed.
 
-Prime Owl must return the Prime schema, even on pass:
+If critics returned no findings, Prime Owl must return this exact pass packet:
 
 ```json
 {
@@ -123,6 +126,23 @@ Prime Owl must return the Prime schema, even on pass:
     "No Wise Owl accepted findings remain.",
     "Proceed with final response, including checks run and execution issues."
   ]
+}
+```
+
+If every critic finding is rejected, the verdict is still `pass`; keep each rejected source in `rejected_findings` so accounting remains complete:
+
+```json
+{
+  "verdict": "pass",
+  "accepted_findings": [],
+  "rejected_findings": [
+    {
+      "source_ids": ["proof_owl:P-CI-001"],
+      "reason": "low_value",
+      "explanation": "The final response already records the exact command and output."
+    }
+  ],
+  "builder_instructions": ["No accepted findings remain."]
 }
 ```
 
@@ -163,6 +183,8 @@ python3 .agents/skills/wise-owl/scripts/wise_owl_install.py --scope user
 python3 .agents/skills/wise-owl/scripts/wise_owl_install.py --scope user --check
 ```
 
+Add `--json` to `--check` for a single privacy-safe automation result. The result includes health, scope, installed and separately bundled candidate versions, update availability, sorted issue codes, allowlisted issue objects, and one of `install`, `upgrade`, `repair`, `review`, or `none`. It never serializes absolute paths, invalid manifest keys, control characters, or raw exceptions. Checks also report manifest scope mismatch and legacy `owl_*` agent files. `--json` without `--check` is an argument error.
+
 Override paths for testing or unusual local Codex layouts:
 
 ```bash
@@ -172,6 +194,8 @@ WISE_OWL_CODEX_HOME=/path/to/.codex WISE_OWL_USER_SKILLS_HOME=/path/to/.agents p
 Installer migration behavior: if legacy `owl_eyes.toml`, `owl_guard.toml`, or `owl_proof.toml` files exist in the target agent directory, the installer warns. Rerun with `--force` to remove those legacy TOMLs while installing `logic_owl.toml`, `guardian_owl.toml`, `proof_owl.toml`, and `prime_owl.toml`.
 
 Successful installs create a managed install manifest inside the skill directory. Later installs can update unchanged Wise Owl-owned files without `--force`, while local modifications remain protected. Use `--uninstall` to remove unchanged owned files; shared `config.toml` and `AGENTS.md` content is left intact.
+
+Installer writes use exclusive same-directory temporary files that remain `0600` while content is populated, are flushed and file-synced, receive the target mode, and atomically replace one destination at a time. Existing modes are preserved; a new `config.toml` uses `0600`, while other new text files use `0644`. Obsolete managed files are removed before the new manifest is published, and the manifest is written last. After process interruption, `--check` can report the partial state and the same candidate can be retried without `--force`. These are per-file torn-write guarantees only, not cross-file rollback, directory syncing, or power-loss durability.
 
 ## Plugin Skeleton
 
@@ -213,7 +237,7 @@ Use Wise Owl Stuck Review after these two failed check loops. Focus on the wrong
 
 ## Partial Reviews And Brackets
 
-Report a review as partial when any reviewer fails to start, times out, returns malformed output, cannot be closed cleanly, or fails packet validation.
+Report a review as partial when a critic fails to start, times out, returns malformed output, cannot be closed cleanly, or fails packet validation. Prime Owl makes the review partial only when its one validator-guided correction attempt also fails. Record a recovered Prime correction as an execution issue without downgrading an otherwise complete review.
 
 Prime Owl may judge available packets only if the final answer says the run was partial. Do not say all three critics returned unless all three valid packets were received and parsed.
 
@@ -340,8 +364,8 @@ Lite example:
 Mode: Wise Owl Lite
 Mode selection reason: low-risk README review requested
 Review status: complete-lite
-Selected reviewers: Prime Owl
-Model diversity: Prime Owl configured with gpt-5.5 high
+Selected reviewers: Logic Owl, Prime Owl
+Model diversity: Prime Owl gpt-5.5 high; Logic Owl gpt-5.4-mini high
 Prime Owl verdict: pass
 
 [REVIEW_PACKET]
@@ -352,7 +376,7 @@ Checks run: none
 Known assumptions: docs-only
 
 [CRITIC_RESULTS]
-Logic Owl: not spawned
+Logic Owl: complete
 Guardian Owl: not spawned
 Proof Owl: not spawned
 
@@ -410,6 +434,7 @@ python3 .agents/skills/wise-owl/scripts/wise_owl_validate_packet.py --type criti
 python3 .agents/skills/wise-owl/scripts/wise_owl_validate_packet.py --type prime --file prime.json
 python3 .agents/skills/wise-owl/scripts/wise_owl_validate_packet.py --type prime --file prime.json --critics critic1.json critic2.json critic3.json
 python3 .agents/skills/wise-owl/scripts/wise_owl_validate_packet.py --type prime --file prime.json --require-critics --critics critic1.json critic2.json
+python3 .agents/skills/wise-owl/scripts/wise_owl_validate_packet.py --type prime --file prime.json --mode lite --critics logic.json
 python3 .agents/skills/wise-owl/scripts/wise_owl_validate_packet.py --type prime --file prime.json --mode standard --critics logic.json proof.json
 python3 .agents/skills/wise-owl/scripts/wise_owl_validate_packet.py --type prime --file prime.json --mode security --critics guardian.json
 python3 .agents/skills/wise-owl/scripts/wise_owl_validate_packet.py --type prime --file prime.json --mode full --critics logic.json guardian.json proof.json

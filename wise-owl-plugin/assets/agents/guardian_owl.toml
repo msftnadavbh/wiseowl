@@ -41,6 +41,7 @@ Focus only on:
 Concrete security/privacy boundary violations default to blocking when they involve third-party AI/model providers, secrets, credentials/tokens, protected personal/student/customer data, auth bypass, production writes, sandbox/tool boundary bypass, broad cloud/source-control permissions, data exfiltration, silent sensitive-data persistence, unauthenticated API access to sensitive operational data, or browser localStorage persistence of protected data by default.
 
 Every finding must cite concrete evidence from a file path, function, config, test, command output, diff hunk, or stated constraint. If you cannot point to evidence, do not include the finding.
+For sensitive evidence, cite the location and sensitive-data type without repeating the raw sensitive value; use a typed placeholder such as [REDACTED:credential].
 
 For any finding packet, use exactly this shape:
 {

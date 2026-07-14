@@ -26,7 +26,7 @@ REJECTION_REASONS = {
     "contradicted_by_evidence",
 }
 MODE_ROLES = {
-    "lite": set(),
+    "lite": {"logic_owl"},
     "standard": {"logic_owl", "proof_owl"},
     "security": {"guardian_owl"},
     "full": CRITIC_ROLES,
@@ -42,6 +42,10 @@ PRIME_REJECTED_KEYS = {"source_ids", "reason", "explanation"}
 
 def is_non_empty_string(value: Any) -> bool:
     return isinstance(value, str) and bool(value.strip())
+
+
+def list_items(value: Any) -> list[Any]:
+    return value if isinstance(value, list) else []
 
 
 def require_fields(errors: list[str], obj: Any, fields: tuple[str, ...], path: str) -> None:
@@ -61,7 +65,7 @@ def reject_unknown_keys(errors: list[str], obj: Any, allowed: set[str], path: st
 
 
 def require_enum(errors: list[str], value: Any, allowed: set[str], path: str) -> None:
-    if value not in allowed:
+    if not isinstance(value, str) or value not in allowed:
         choices = ", ".join(sorted(allowed))
         errors.append(f"{path}: expected one of {choices}; got {value!r}")
 
@@ -113,10 +117,10 @@ def require_list(errors: list[str], packet: dict[str, Any], field: str) -> list[
 
 def critic_source_ids(packet: dict[str, Any]) -> tuple[set[str], list[str]]:
     errors: list[str] = []
-    role = packet.get("role")
+    role = packet.get("role") if isinstance(packet.get("role"), str) else ""
     ids: set[str] = set()
     seen: set[str] = set()
-    for index, finding in enumerate(packet.get("findings", [])):
+    for index, finding in enumerate(list_items(packet.get("findings"))):
         if not isinstance(finding, dict):
             continue
         finding_id = finding.get("id")
@@ -163,7 +167,7 @@ def validate_critic(packet: Any) -> list[str]:
 
 
 def validate_critic_verdict_semantics(errors: list[str], packet: dict[str, Any]) -> None:
-    findings = [finding for finding in packet.get("findings", []) if isinstance(finding, dict)]
+    findings = [finding for finding in list_items(packet.get("findings")) if isinstance(finding, dict)]
     has_blocking = any(finding.get("severity") == "blocking" for finding in findings)
     verdict = packet.get("verdict")
     expected = "pass" if not findings else "blocked" if has_blocking else "concerns"
@@ -181,13 +185,10 @@ def validate_source_accounting(
     seen: set[str] = set()
     accounted: set[str] = set()
     for section in ("accepted_findings", "rejected_findings"):
-        for index, finding in enumerate(packet.get(section, [])):
+        for index, finding in enumerate(list_items(packet.get(section))):
             if not isinstance(finding, dict):
                 continue
-            source_ids = finding.get("source_ids", [])
-            if not isinstance(source_ids, list):
-                continue
-            for source_id in source_ids:
+            for source_id in list_items(finding.get("source_ids")):
                 if not is_non_empty_string(source_id):
                     continue
                 path = f"{section}[{index}].source_ids"
@@ -201,15 +202,15 @@ def validate_source_accounting(
 
     expected: set[str] = set()
     roles: set[str] = set()
-    for critic_index, critic in enumerate(critic_packets):
+    for critic_index, critic in enumerate(list_items(critic_packets)):
         critic_errors = validate_critic(critic)
         errors.extend(f"critics[{critic_index}].{error}" for error in critic_errors)
         if not isinstance(critic, dict):
             continue
         role = critic.get("role")
-        if role in roles:
+        if isinstance(role, str) and role in roles:
             errors.append(f"critics[{critic_index}].role: duplicate critic role {role!r}")
-        elif role in CRITIC_ROLES:
+        elif isinstance(role, str) and role in CRITIC_ROLES:
             roles.add(role)
         ids, _ = critic_source_ids(critic)
         expected.update(ids)
@@ -231,7 +232,7 @@ def validate_source_accounting(
 
 
 def validate_verdict_semantics(errors: list[str], packet: dict[str, Any]) -> None:
-    accepted = [finding for finding in packet.get("accepted_findings", []) if isinstance(finding, dict)]
+    accepted = [finding for finding in list_items(packet.get("accepted_findings")) if isinstance(finding, dict)]
     has_blocking = any(finding.get("severity") == "blocking" for finding in accepted)
     verdict = packet.get("verdict")
     expected = "pass" if not accepted else "fix_required" if has_blocking else "caution"
@@ -290,7 +291,7 @@ def load_json(path: Path) -> tuple[Any | None, list[str]]:
             return json.load(handle), []
     except OSError as exc:
         return None, [f"{path}: {exc}"]
-    except json.JSONDecodeError as exc:
+    except (ValueError, RecursionError) as exc:
         return None, [f"{path}: invalid JSON: {exc}"]
 
 

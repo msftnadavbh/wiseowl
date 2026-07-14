@@ -1,11 +1,17 @@
+import hashlib
 import importlib.util
+import io
 import json
+import os
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -16,6 +22,7 @@ PLUGIN_INSTALLER = ROOT / "wise-owl-plugin" / "scripts" / "install_wise_owl.py"
 def load_installer():
     spec = importlib.util.spec_from_file_location("wise_owl_install", INSTALLER)
     module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
@@ -23,6 +30,7 @@ def load_installer():
 def load_plugin_installer():
     spec = importlib.util.spec_from_file_location("install_wise_owl_plugin", PLUGIN_INSTALLER)
     module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
@@ -37,6 +45,18 @@ class WiseOwlInstallTests(unittest.TestCase):
 
     def tearDown(self):
         self.tmp.cleanup()
+
+    def assert_json_strings_are_private(self, value):
+        if isinstance(value, dict):
+            for key, item in value.items():
+                self.assert_json_strings_are_private(key)
+                self.assert_json_strings_are_private(item)
+        elif isinstance(value, list):
+            for item in value:
+                self.assert_json_strings_are_private(item)
+        elif isinstance(value, str):
+            self.assertNotIn(str(self.root), value)
+            self.assertFalse(any(ord(char) < 32 or ord(char) == 127 for char in value), repr(value))
 
     def make_template(self):
         template = self.root / "template"
@@ -180,6 +200,21 @@ class WiseOwlInstallTests(unittest.TestCase):
         errors = self.installer.check_install("user", self.root, self.codex_home, self.user_skills_home)
         self.assertTrue(any("missing agent TOML: proof_owl.toml" in error for error in errors), errors)
 
+    def test_user_check_ignores_repository_agents_policy(self):
+        self.installer.install("user", self.root, self.codex_home, template_root=ROOT)
+        agents_md = self.root / "AGENTS.md"
+
+        for policy in (
+            self.installer.AGENTS_POLICY_V0_1,
+            "## WISE OWL REVIEW POLICY\n\nKeep my custom routing rules.\n",
+        ):
+            with self.subTest(policy=policy.splitlines()[0]):
+                agents_md.write_text(policy, encoding="utf-8")
+                self.assertEqual(
+                    self.installer.check_install("user", self.root, self.codex_home, self.user_skills_home),
+                    [],
+                )
+
     def test_check_fails_when_managed_manifest_is_missing(self):
         self.installer.install("user", self.root, self.codex_home, template_root=ROOT)
         manifest = self.user_skills_home / "skills" / "wise-owl" / ".wise-owl-install.json"
@@ -205,6 +240,199 @@ class WiseOwlInstallTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("Wise Owl check passed for user scope.", result.stdout)
         self.assertEqual(before, after)
+
+    def test_check_json_is_privacy_safe(self):
+        self.installer.install("user", self.root, self.codex_home, template_root=ROOT)
+        skill_dir = self.user_skills_home / "skills" / "wise-owl"
+        manifest_path = skill_dir / self.installer.MANIFEST_NAME
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["scope"] = "repo"
+        manifest["files"]["evil\n/private/key"] = "0" * 64
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+        legacy = self.codex_home / "agents" / "owl_guard.toml"
+        legacy.write_text("legacy\n", encoding="utf-8")
+
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "install.py"), "--check", "--json"],
+            cwd=self.root,
+            env={
+                "HOME": str(self.root / "home"),
+                "WISE_OWL_TEMPLATE_ROOT": str(ROOT),
+            },
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        document = json.loads(result.stdout)
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.stderr, "")
+        self.assertEqual(document["scope"], "user")
+        self.assertFalse(document["ok"])
+        self.assertIn("manifest_scope_mismatch", document["issue_codes"])
+        self.assertIn("legacy_agent_present", document["issue_codes"])
+        self.assertEqual(document["issue_codes"], sorted(document["issue_codes"]))
+        self.assertTrue(all(set(issue) <= {"code", "subject"} for issue in document["issues"]))
+        self.assertIn({"code": "legacy_agent_present", "subject": "owl_guard.toml"}, document["issues"])
+        self.assert_json_strings_are_private(document)
+        self.assertNotIn("evil", json.dumps(document))
+        self.assertNotIn("private", json.dumps(document))
+
+        human = subprocess.run(
+            [sys.executable, str(ROOT / "install.py"), "--check"],
+            cwd=self.root,
+            env={"HOME": str(self.root / "home"), "WISE_OWL_TEMPLATE_ROOT": str(ROOT)},
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(human.stdout, "")
+        self.assertIn("Wise Owl check failed for user scope:", human.stderr)
+
+        invalid = subprocess.run(
+            [sys.executable, str(ROOT / "install.py"), "--json"],
+            cwd=self.root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(invalid.returncode, 2)
+        self.assertEqual(invalid.stdout, "")
+        self.assertIn("--json requires --check", invalid.stderr)
+
+    def test_check_json_rejects_unsafe_versions_from_cli_sources(self):
+        self.installer.install("user", self.root, self.codex_home, template_root=ROOT)
+        manifest_path = self.user_skills_home / "skills" / "wise-owl" / self.installer.MANIFEST_NAME
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["package_version"] = "/Users/private/" + "x" * 200
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+        candidate = self.root / "candidate"
+        plugin_json = candidate / ".codex-plugin" / "plugin.json"
+        plugin_json.parent.mkdir(parents=True)
+        plugin_json.write_text(json.dumps({"version": "vérsion/秘密"}), encoding="utf-8")
+
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "install.py"), "--check", "--json"],
+            cwd=self.root,
+            env={
+                "HOME": str(self.root / "home"),
+                "WISE_OWL_TEMPLATE_ROOT": str(candidate),
+            },
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        document = json.loads(result.stdout)
+        self.assertEqual(result.stderr, "")
+        self.assertIsNone(document["installed_version"])
+        self.assertIsNone(document["candidate_version"])
+        self.assertIn("version_unorderable", document["issue_codes"])
+        self.assert_json_strings_are_private(document)
+
+    def test_check_json_distinguishes_missing_manifest_from_invalid_manifest_version(self):
+        self.installer.install("user", self.root, self.codex_home, template_root=ROOT)
+        manifest_path = self.user_skills_home / "skills" / "wise-owl" / self.installer.MANIFEST_NAME
+        base_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        cases = (
+            ({key: value for key, value in base_manifest.items() if key != "package_version"}, "missing_manifest_version"),
+            ({**base_manifest, "package_version": None}, "invalid_manifest_version"),
+            ({**base_manifest, "package_version": 2}, "invalid_manifest_version"),
+            ({**base_manifest, "package_version": "../private"}, "unsafe_manifest_version"),
+        )
+        for manifest, expected_code in cases:
+            with self.subTest(expected_code=expected_code, version=manifest.get("package_version", "missing")):
+                manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+                result = subprocess.run(
+                    [sys.executable, str(ROOT / "install.py"), "--check", "--json"],
+                    cwd=self.root,
+                    env={"HOME": str(self.root / "home"), "WISE_OWL_TEMPLATE_ROOT": str(ROOT)},
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                document = json.loads(result.stdout)
+                self.assertEqual(result.returncode, 1)
+                self.assertEqual(result.stderr, "")
+                self.assertIn(expected_code, document["issue_codes"])
+                self.assertNotEqual(document["suggested_action"], "install")
+                self.assertIn(document["suggested_action"], {"repair", "review"})
+                self.assertIsNone(document["installed_version"])
+                self.assert_json_strings_are_private(document)
+
+    def test_check_json_handles_malformed_utf8_without_traceback(self):
+        self.installer.install("user", self.root, self.codex_home, template_root=ROOT)
+        skill = self.user_skills_home / "skills" / "wise-owl" / "SKILL.md"
+        skill.write_bytes(b"\xff\xfe/private/secret")
+
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "install.py"), "--check", "--json"],
+            cwd=self.root,
+            env={"HOME": str(self.root / "home"), "WISE_OWL_TEMPLATE_ROOT": str(ROOT)},
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        document = json.loads(result.stdout)
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.stderr, "")
+        self.assertIn("unreadable_skill", document["issue_codes"])
+        self.assert_json_strings_are_private(document)
+
+    def test_check_json_handles_unreadable_managed_file(self):
+        self.installer.install("user", self.root, self.codex_home, template_root=ROOT)
+        managed = self.user_skills_home / "skills" / "wise-owl" / "references" / "finding-schema.md"
+        managed.chmod(0)
+        try:
+            result = subprocess.run(
+                [sys.executable, str(ROOT / "install.py"), "--check", "--json"],
+                cwd=self.root,
+                env={"HOME": str(self.root / "home"), "WISE_OWL_TEMPLATE_ROOT": str(ROOT)},
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        finally:
+            managed.chmod(0o644)
+        document = json.loads(result.stdout)
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.stderr, "")
+        self.assertIn("unreadable_managed_file", document["issue_codes"])
+        self.assert_json_strings_are_private(document)
+
+    def test_check_json_version_truth_table(self):
+        candidate = self.root / "candidate"
+        plugin_json = candidate / ".codex-plugin" / "plugin.json"
+        plugin_json.parent.mkdir(parents=True)
+
+        cases = (
+            (None, "0.2.0", None, "install", set()),
+            ("0.2.0", None, None, "none", {"candidate_version_unknown"}),
+            ("0.2.0", "0.2.0", False, "none", set()),
+            ("0.2.0", "0.3.0", True, "upgrade", set()),
+            ("0.3.0", "0.2.0", False, "none", set()),
+            ("development", "0.2.0", None, "review", {"version_unorderable"}),
+            ("0.2.0", "next", None, "review", {"version_unorderable"}),
+        )
+        for installed, bundled, update_available, action, extra_codes in cases:
+            with self.subTest(installed=installed, bundled=bundled):
+                if bundled is None:
+                    plugin_json.unlink(missing_ok=True)
+                else:
+                    plugin_json.write_text(json.dumps({"version": bundled}), encoding="utf-8")
+                issues = []
+                result = self.installer.check_json_result("user", installed, candidate, issues)
+                self.assertEqual(result["installed_version"], installed)
+                self.assertEqual(result["candidate_version"], bundled)
+                self.assertIs(result["update_available"], update_available)
+                self.assertEqual(result["suggested_action"], action)
+                self.assertEqual(set(result["issue_codes"]), extra_codes)
+
+        result = self.installer.check_json_result(
+            "user",
+            "0.2.0",
+            candidate,
+            [self.installer.CheckIssue("unsafe_managed_file", "private detail", "/private/secret")],
+        )
+        self.assertEqual(result["issues"][0], {"code": "unsafe_managed_file"})
 
     def test_install_success_output_includes_next_steps(self):
         result = subprocess.run(
@@ -239,6 +467,135 @@ class WiseOwlInstallTests(unittest.TestCase):
         self.assertEqual(manifest["schema_version"], 1)
         self.assertIn("skill/SKILL.md", manifest["files"])
 
+    def test_atomic_write_preserves_bytes_modes_and_cleanup(self):
+        target = self.root / "nested" / "note.txt"
+        target.parent.mkdir()
+        target.write_text("old\n", encoding="utf-8")
+        target.chmod(0o640)
+        observed = {}
+        real_mkstemp = tempfile.mkstemp
+        real_fsync = os.fsync
+
+        def inspected_mkstemp(*args, **kwargs):
+            observed["dir"] = Path(kwargs["dir"])
+            fd, name = real_mkstemp(*args, **kwargs)
+            observed["temp"] = Path(name)
+            return fd, name
+
+        def inspected_fsync(fd):
+            observed["mode_while_populated"] = stat.S_IMODE(os.fstat(fd).st_mode)
+            return real_fsync(fd)
+
+        with mock.patch.object(self.installer.tempfile, "mkstemp", side_effect=inspected_mkstemp) as mkstemp:
+            with mock.patch.object(self.installer.os, "fsync", side_effect=inspected_fsync) as fsync:
+                self.installer.atomic_write_text(target, "new\n")
+
+        self.assertEqual(observed["dir"], target.parent)
+        self.assertEqual(observed["mode_while_populated"], 0o600)
+        self.assertEqual(target.read_bytes(), b"new\n")
+        self.assertEqual(stat.S_IMODE(target.stat().st_mode), 0o640)
+        self.assertFalse(observed["temp"].exists())
+        mkstemp.assert_called_once()
+        fsync.assert_called_once()
+
+        config = self.root / "fresh" / "config.toml"
+        text = self.root / "fresh" / "SKILL.md"
+        self.installer.atomic_write_text(config, "[agents]\n")
+        self.installer.atomic_write_text(text, "# Skill\n")
+        self.assertEqual(stat.S_IMODE(config.stat().st_mode), 0o600)
+        self.assertEqual(stat.S_IMODE(text.stat().st_mode), 0o644)
+
+        old_bytes = target.read_bytes()
+        old_mode = stat.S_IMODE(target.stat().st_mode)
+        with mock.patch.object(self.installer.os, "replace", side_effect=OSError("injected replace failure")):
+            with self.assertRaisesRegex(OSError, "injected replace failure"):
+                self.installer.atomic_write_text(target, "replacement\n")
+        self.assertEqual(target.read_bytes(), old_bytes)
+        self.assertEqual(stat.S_IMODE(target.stat().st_mode), old_mode)
+        self.assertEqual(list(target.parent.glob(".*.tmp")), [])
+
+        stderr = io.StringIO()
+        args = SimpleNamespace(
+            check=False, uninstall=False, json=False, scope="user", dry_run=False,
+            force=False, patch_agents_md=False, model="test", prime_model="prime", verbose=False,
+        )
+        with mock.patch.object(self.installer, "parse_args", return_value=args):
+            with mock.patch.object(self.installer, "install", side_effect=OSError("injected write failure")):
+                with mock.patch("sys.stderr", stderr):
+                    self.assertEqual(self.installer.main(), 1)
+        self.assertIn("Wise Owl install failed: injected write failure", stderr.getvalue())
+        self.assertNotIn("Traceback", stderr.getvalue())
+
+    def test_interrupted_upgrade_retries_same_candidate(self):
+        template = self.make_template()
+        self.installer.install("user", self.root, self.codex_home, template_root=template)
+        skill_dir = self.user_skills_home / "skills" / "wise-owl"
+        manifest_path = skill_dir / self.installer.MANIFEST_NAME
+        old_manifest = manifest_path.read_bytes()
+        for relative in ("SKILL.md", "references/finding-schema.md", "references/severity-rubric.md"):
+            source = template / ".agents" / "skills" / "wise-owl" / relative
+            source.write_text(source.read_text(encoding="utf-8") + "\nUpgrade marker.\n", encoding="utf-8")
+
+        real_replace = os.replace
+        replaced = []
+
+        def interrupt_after_several(source, destination):
+            if len(replaced) == 3:
+                raise OSError("injected interruption")
+            real_replace(source, destination)
+            replaced.append(Path(destination))
+
+        with mock.patch.object(self.installer.os, "replace", side_effect=interrupt_after_several):
+            with self.assertRaisesRegex(OSError, "injected interruption"):
+                self.installer.install("user", self.root, self.codex_home, template_root=template)
+
+        self.assertEqual(len(replaced), 3)
+        self.assertNotIn(manifest_path, replaced)
+        self.assertEqual(manifest_path.read_bytes(), old_manifest)
+        self.assertEqual(list(self.root.rglob(".*.tmp")), [])
+        check_env = {
+            "HOME": str(self.root / "home"),
+            "WISE_OWL_REPO_ROOT": str(self.root),
+            "WISE_OWL_CODEX_HOME": str(self.codex_home),
+            "WISE_OWL_USER_SKILLS_HOME": str(self.user_skills_home),
+            "WISE_OWL_TEMPLATE_ROOT": str(template),
+        }
+        partial_check = subprocess.run(
+            [sys.executable, str(ROOT / "install.py"), "--check"],
+            cwd=self.root,
+            env=check_env,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(partial_check.returncode, 1)
+        self.assertIn("Wise Owl check failed for user scope", partial_check.stderr)
+
+        retry_order = []
+
+        def record_replace(source, destination):
+            real_replace(source, destination)
+            retry_order.append(Path(destination))
+
+        with mock.patch.object(self.installer.os, "replace", side_effect=record_replace):
+            self.installer.install("user", self.root, self.codex_home, template_root=template)
+
+        self.assertEqual(retry_order[-1], manifest_path)
+        self.assertEqual(
+            self.installer.collect_check_issues("user", self.root, self.codex_home, self.user_skills_home),
+            [],
+        )
+        completed_check = subprocess.run(
+            [sys.executable, str(ROOT / "install.py"), "--check"],
+            cwd=self.root,
+            env=check_env,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(completed_check.returncode, 0, completed_check.stderr)
+        self.assertIn("Wise Owl check passed for user scope", completed_check.stdout)
+
     def test_managed_upgrade_refuses_modified_owned_files(self):
         template = self.make_template()
         self.installer.install("user", self.root, self.codex_home, template_root=template)
@@ -266,6 +623,40 @@ class WiseOwlInstallTests(unittest.TestCase):
         self.assertFalse(installed.exists())
         manifest = json.loads((self.user_skills_home / "skills" / "wise-owl" / ".wise-owl-install.json").read_text())
         self.assertNotIn("skill/references/old-guide.md", manifest["files"])
+
+    def test_stale_removal_failure_keeps_old_manifest_and_retry_recovers(self):
+        template = self.make_template()
+        stale_source = template / ".agents" / "skills" / "wise-owl" / "references" / "old-guide.md"
+        stale_source.write_text("old guide\n", encoding="utf-8")
+        self.installer.install("user", self.root, self.codex_home, template_root=template)
+        installed = self.user_skills_home / "skills" / "wise-owl" / "references" / "old-guide.md"
+        manifest_path = self.user_skills_home / "skills" / "wise-owl" / self.installer.MANIFEST_NAME
+        old_manifest = manifest_path.read_bytes()
+        stale_source.unlink()
+        skill_source = template / ".agents" / "skills" / "wise-owl" / "SKILL.md"
+        skill_source.write_text(skill_source.read_text(encoding="utf-8") + "\nUpgrade marker.\n", encoding="utf-8")
+
+        with mock.patch.object(
+            self.installer,
+            "remove_stale_files",
+            side_effect=OSError("injected stale removal failure"),
+        ):
+            with self.assertRaisesRegex(OSError, "injected stale removal failure"):
+                self.installer.install("user", self.root, self.codex_home, template_root=template)
+
+        self.assertEqual(manifest_path.read_bytes(), old_manifest)
+        self.assertTrue(installed.exists())
+        issues = self.installer.collect_check_issues("user", self.root, self.codex_home, self.user_skills_home)
+        self.assertTrue(any(issue.code == "modified_managed_file" for issue in issues), issues)
+
+        self.installer.install("user", self.root, self.codex_home, template_root=template)
+        self.assertFalse(installed.exists())
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        self.assertNotIn("skill/references/old-guide.md", manifest["files"])
+        self.assertEqual(
+            self.installer.collect_check_issues("user", self.root, self.codex_home, self.user_skills_home),
+            [],
+        )
 
     def test_managed_upgrade_refuses_to_orphan_modified_stale_files(self):
         template = self.make_template()
@@ -657,6 +1048,131 @@ class WiseOwlInstallTests(unittest.TestCase):
         self.assertEqual(once, twice)
         self.assertEqual(once.count("## Wise Owl Review Policy"), 1)
 
+    def test_agents_md_patch_upgrades_exact_generated_v01_policy(self):
+        legacy_policy = self.installer.AGENTS_POLICY_V0_1
+        self.assertEqual(
+            hashlib.sha256(legacy_policy.encode("utf-8")).hexdigest(),
+            "50a77fe8d2b737c73d59ad5b56db36b302efdc5f171067db130adb9c8130c7d4",
+        )
+        existing = f"# Project\n\n{legacy_policy}\n## User Rules\n\nKeep this.\n"
+        agents_md = self.root / "AGENTS.md"
+        agents_md.write_text(existing, encoding="utf-8")
+
+        changed = self.installer.install(
+            "repo",
+            self.root,
+            self.codex_home,
+            patch_agents=True,
+            template_root=ROOT,
+        )
+        patched = agents_md.read_text(encoding="utf-8")
+
+        self.assertIn(agents_md, changed)
+        self.assertEqual(patched, existing.replace(legacy_policy, self.installer.AGENTS_POLICY))
+        self.assertEqual(patched.count("## Wise Owl Review Policy"), 1)
+        self.assertNotIn("Wise Owl Lite: Prime Owl only", patched)
+        self.assertIn("## User Rules\n\nKeep this.\n", patched)
+        self.assertEqual(self.installer.check_install("repo", self.root, self.codex_home), [])
+
+    def test_agents_md_patch_rejects_customized_policy_without_writing(self):
+        agents_md = self.root / "AGENTS.md"
+        customized = "# Project\n\n## Wise Owl Review Policy\n\nKeep my custom routing rules.\n"
+        agents_md.write_text(customized, encoding="utf-8")
+
+        with self.assertRaisesRegex(ValueError, "customized or ambiguous Wise Owl Review Policy"):
+            self.installer.install(
+                "repo",
+                self.root,
+                self.codex_home,
+                patch_agents=True,
+                template_root=ROOT,
+            )
+
+        self.assertEqual(agents_md.read_text(encoding="utf-8"), customized)
+        self.assertFalse((self.root / ".agents" / "skills" / "wise-owl" / "SKILL.md").exists())
+        self.assertFalse((self.root / ".codex" / "config.toml").exists())
+
+    def test_agents_md_patch_rejects_markdown_equivalent_policy_headings_without_writing(self):
+        agents_md = self.root / "AGENTS.md"
+        headings = (
+            "## WISE OWL REVIEW POLICY",
+            "##  Wise Owl Review Policy",
+            "## Wise Owl Review Policy ##",
+        )
+        for heading in headings:
+            with self.subTest(heading=heading):
+                customized = f"# Project\n\n{heading}\n\nKeep my custom routing rules.\n"
+                agents_md.write_text(customized, encoding="utf-8")
+
+                with self.assertRaisesRegex(ValueError, "customized or ambiguous Wise Owl Review Policy"):
+                    self.installer.install(
+                        "repo",
+                        self.root,
+                        self.codex_home,
+                        patch_agents=True,
+                        template_root=ROOT,
+                    )
+
+                self.assertEqual(agents_md.read_text(encoding="utf-8"), customized)
+                self.assertFalse((self.root / ".agents" / "skills" / "wise-owl" / "SKILL.md").exists())
+                self.assertFalse((self.root / ".codex" / "config.toml").exists())
+
+    def test_patch_agents_cli_reports_customized_policy_conflict_without_traceback(self):
+        agents_md = self.root / "AGENTS.md"
+        customized = "## Wise Owl Review Policy\n\nKeep my custom routing rules.\n"
+        agents_md.write_text(customized, encoding="utf-8")
+
+        result = subprocess.run(
+            [sys.executable, str(INSTALLER), "--scope", "repo", "--patch-agents-md"],
+            cwd=self.root,
+            env={"WISE_OWL_TEMPLATE_ROOT": str(ROOT)},
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("Wise Owl install failed:", result.stderr)
+        self.assertIn("customized or ambiguous Wise Owl Review Policy", result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
+        self.assertEqual(agents_md.read_text(encoding="utf-8"), customized)
+
+    def test_patch_agents_cli_rejects_markdown_equivalent_policy_headings_without_writing(self):
+        agents_md = self.root / "AGENTS.md"
+        headings = (
+            "## WISE OWL REVIEW POLICY",
+            "##  Wise Owl Review Policy",
+            "## Wise Owl Review Policy ##",
+        )
+        for heading in headings:
+            with self.subTest(heading=heading):
+                customized = f"{heading}\n\nKeep my custom routing rules.\n"
+                agents_md.write_text(customized, encoding="utf-8")
+
+                result = subprocess.run(
+                    [sys.executable, str(INSTALLER), "--scope", "repo", "--patch-agents-md"],
+                    cwd=self.root,
+                    env={"WISE_OWL_TEMPLATE_ROOT": str(ROOT)},
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+
+                self.assertEqual(result.returncode, 1)
+                self.assertIn("Wise Owl install failed:", result.stderr)
+                self.assertIn("customized or ambiguous Wise Owl Review Policy", result.stderr)
+                self.assertNotIn("Traceback", result.stderr)
+                self.assertEqual(agents_md.read_text(encoding="utf-8"), customized)
+
+    def test_check_rejects_obsolete_prime_only_lite_policy(self):
+        self.installer.install("repo", self.root, self.codex_home, template_root=ROOT)
+        agents_md = self.root / "AGENTS.md"
+        agents_md.write_text(self.installer.AGENTS_POLICY_V0_1, encoding="utf-8")
+
+        errors = self.installer.check_install("repo", self.root, self.codex_home)
+
+        self.assertTrue(any("obsolete v0.1 Wise Owl Review Policy" in error for error in errors), errors)
+
     def test_plugin_skill_matches_repo_skill(self):
         repo_skill = ROOT / ".agents" / "skills" / "wise-owl" / "SKILL.md"
         plugin_skill = ROOT / "wise-owl-plugin" / "skills" / "wise-owl" / "SKILL.md"
@@ -714,10 +1230,12 @@ class WiseOwlInstallTests(unittest.TestCase):
             self.assertIn("do not add extra top-level fields", content)
 
         prime = (ROOT / ".codex" / "agents" / "prime_owl.toml").read_text()
-        self.assertIn("If no accepted findings remain, return exactly:", prime)
+        self.assertIn("If critics returned no findings, return exactly:", prime)
         self.assertIn('"accepted_findings": []', prime)
         self.assertIn('"rejected_findings": []', prime)
         self.assertIn('"No Wise Owl accepted findings remain."', prime)
+        self.assertIn("If every critic finding is rejected", prime)
+        self.assertIn("keep every rejected source_id in rejected_findings", prime)
         self.assertIn("do not return role", prime)
         self.assertIn("do not omit accepted_findings, rejected_findings, or builder_instructions", prime)
 
@@ -740,6 +1258,34 @@ class WiseOwlInstallTests(unittest.TestCase):
         self.assertIn('"required_builder_action": "minimal action"', prime)
         self.assertIn("Allowed categories: correctness, security, testability, maintainability, scope, ci", prime)
         self.assertIn("Do not use required_fix", prime)
+
+    def test_review_evidence_guidance_is_privacy_minimized(self):
+        placeholder = "[REDACTED:credential]"
+        for filename in ("logic_owl.toml", "guardian_owl.toml", "proof_owl.toml"):
+            content = (ROOT / ".codex" / "agents" / filename).read_text()
+            with self.subTest(filename=filename):
+                self.assertIn("location and sensitive-data type", content)
+                self.assertIn("without repeating the raw sensitive value", content)
+                self.assertIn(placeholder, content)
+
+        prime = (ROOT / ".codex" / "agents" / "prime_owl.toml").read_text()
+        self.assertIn("Do not preserve or repeat leaked sensitive values", prime)
+        self.assertIn(placeholder, prime)
+
+        surfaces = {
+            "SKILL.md": (ROOT / ".agents" / "skills" / "wise-owl" / "SKILL.md").read_text(),
+            "AGENTS.md": (ROOT / "AGENTS.md").read_text(),
+            "installer policy": self.installer.AGENTS_POLICY,
+        }
+        for name, content in surfaces.items():
+            with self.subTest(name=name):
+                self.assertIn("Before spawn, the builder must strip raw sensitive values", content)
+                self.assertIn(placeholder, content)
+
+        docs = (ROOT / "docs" / "wise-owl.md").read_text()
+        self.assertIn("best-effort instruction hygiene", docs)
+        self.assertIn("not sanitizer or confidentiality enforcement", docs)
+        self.assertIn(placeholder, docs)
 
     def test_installer_warns_for_legacy_agent_files(self):
         legacy = self.root / ".codex" / "agents" / "owl_guard.toml"
@@ -775,6 +1321,8 @@ class WiseOwlInstallTests(unittest.TestCase):
             "Choose the cheapest mode that covers the risk",
             "Escalate, never downgrade",
             "Lite is the default for low-risk review/planning requests",
+            "Wise Owl Lite: Logic Owl, then Prime Owl",
+            "complete-lite only when both Logic Owl and Prime Owl return valid packets",
             "complete-lite",
             "not spawned",
             "Logic Owl + Proof Owl in parallel",
@@ -799,9 +1347,44 @@ class WiseOwlInstallTests(unittest.TestCase):
             "not merge a blocking security finding with non-blocking documentation",
             "Pass/no-finding critic results must still validate",
             "A raw `pass` packet missing those required fields is malformed",
+            "Spawn the selected critics directly from the builder",
+            "one correction attempt",
         ]
         for text in required:
             self.assertIn(text, skill)
+
+        prime = (ROOT / ".codex" / "agents" / "prime_owl.toml").read_text()
+        self.assertIn("self-check the completed object", prime)
+        self.assertIn("Do not return the critic schema", prime)
+
+        for surface in (
+            (ROOT / "AGENTS.md").read_text(),
+            self.installer.AGENTS_POLICY,
+            (ROOT / "docs" / "wise-owl.md").read_text(),
+        ):
+            self.assertIn("selected critics directly", surface)
+            self.assertIn("one correction attempt", surface)
+            self.assertIn("valid correction", surface)
+
+    def test_lite_and_prime_pass_contracts_match_across_public_surfaces(self):
+        surfaces = {
+            "AGENTS.md": (ROOT / "AGENTS.md").read_text(),
+            "SKILL.md": (ROOT / ".agents" / "skills" / "wise-owl" / "SKILL.md").read_text(),
+            "installer policy": self.installer.AGENTS_POLICY,
+            "workflow docs": (ROOT / "docs" / "wise-owl.md").read_text(),
+        }
+        for name, content in surfaces.items():
+            with self.subTest(name=name):
+                self.assertIn("Wise Owl Lite: Logic Owl, then Prime Owl", content)
+                self.assertNotIn("Wise Owl Lite: Prime Owl only", content)
+
+        readme = (ROOT / "README.md").read_text()
+        schema = (ROOT / ".agents" / "skills" / "wise-owl" / "references" / "finding-schema.md").read_text()
+        changelog = (ROOT / "CHANGELOG.md").read_text()
+        self.assertIn("| Lite | Logic Owl + Prime Owl |", readme)
+        self.assertIn("If critics returned no findings", schema)
+        self.assertIn("If every critic finding is rejected", schema)
+        self.assertIn("all valid v0.1 packet shapes remain valid", changelog)
 
     def test_agents_md_documents_router(self):
         agents = (ROOT / "AGENTS.md").read_text()

@@ -8,6 +8,7 @@ import importlib.util
 import json
 import os
 import py_compile
+import re
 import subprocess
 import sys
 import tempfile
@@ -47,6 +48,9 @@ REQUIRED_FILES = (
     "docs/demo-transcript.md",
     "scripts/render_cli_demo.mjs",
     "scripts/sync_plugin_assets.py",
+    "tests/test_release_scripts.py",
+    "tests/test_wise_owl_install.py",
+    "tests/test_wise_owl_validate_packet.py",
     "tests/fixtures/release_archive_members.txt",
     "wise-owl-plugin/.codex-plugin/plugin.json",
     "wise-owl-plugin/skills/wise-owl/SKILL.md",
@@ -160,9 +164,14 @@ def unit_test_checks(root: Path) -> list[str]:
     env = os.environ.copy()
     env["PYTHONDONTWRITEBYTECODE"] = "1"
     code, stdout, stderr = run_command([sys.executable, "-m", "unittest", "discover", "-s", "tests"], root, env)
-    if code == 0:
-        return []
-    return [f"unit tests failed:\n{stdout}{stderr}"]
+    if code != 0:
+        return [f"unit tests failed:\n{stdout}{stderr}"]
+    summaries = re.findall(r"^Ran (\d+) tests? in \d+(?:\.\d+)?s\r?$", stderr, re.MULTILINE)
+    if not summaries:
+        return ["unit test discovery did not report a test count"]
+    if int(summaries[-1]) == 0:
+        return ["unit test discovery reported zero tests"]
+    return []
 
 
 def validator_smoke(root: Path) -> list[str]:
@@ -236,10 +245,40 @@ def installer_smoke(root: Path, sandbox: Path) -> list[str]:
         ([sys.executable, str(installer), "--scope", "user"], "install"),
         ([sys.executable, str(installer), "--scope", "user", "--check"], "check"),
         ([sys.executable, str(installer), "--scope", "user"], "second install"),
+        (
+            [sys.executable, str(installer), "--scope", "repo", "--patch-agents-md"],
+            "repo install",
+        ),
+        ([sys.executable, str(installer), "--scope", "repo", "--check"], "repo check"),
     ):
         code, stdout, stderr = run_command(command, repo_target, env)
         if code != 0:
             errors.append(f"installer {label} failed:\n{stdout}{stderr}")
+
+    installed_copies = (
+        skills_home / "skills" / "wise-owl",
+        repo_target / ".agents" / "skills" / "wise-owl",
+    )
+    fixture_cases = (
+        (root / "tests" / "fixtures" / "critic_valid_blocked.json", 0),
+        (root / "tests" / "fixtures" / "critic_invalid_blocked_without_blocking.json", 1),
+    )
+    for skill in installed_copies:
+        validator = skill / "scripts" / "wise_owl_validate_packet.py"
+        for fixture, expected in fixture_cases:
+            command = [sys.executable, str(validator), "--type", "critic", "--file", str(fixture)]
+            code, stdout, stderr = run_command(command, repo_target, env)
+            if code != expected:
+                errors.append(
+                    f"installed validator {validator} expected exit {expected}, got {code}:\n{stdout}{stderr}"
+                )
+
+    for agents_dir in (codex_home / "agents", repo_target / ".codex" / "agents"):
+        for name in AGENTS:
+            if not (agents_dir / name).is_file():
+                errors.append(f"installed agent is not discoverable: {agents_dir / name}")
+    if not (repo_target / "AGENTS.md").is_file():
+        errors.append("installed repo policy is not discoverable: AGENTS.md")
     return errors
 
 

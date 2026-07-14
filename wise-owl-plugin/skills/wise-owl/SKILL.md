@@ -41,7 +41,7 @@ Before running Wise Owl, choose exactly one mode. Choose the cheapest mode that 
 
 No Wise Owl: Use for trivial work when the user did not ask for review: typo, formatting, README-only, pure explanation, tiny copy change, or dependency metadata only.
 
-Wise Owl Lite: Prime Owl only. Use when the user asks for review, sanity-check, second opinion, or Wise Owl on low-risk work such as docs, prompts, README updates, small plans, small test-only changes, naming cleanup, or low-risk installer/docs polish. Lite is the default for low-risk review/planning requests. Lite must not pretend to be a full review: Selected reviewers is Prime Owl only; Logic Owl, Guardian Owl, and Proof Owl are `not spawned`; Review status is `complete-lite` when Prime Owl returns a valid packet.
+Wise Owl Lite: Logic Owl, then Prime Owl. Use when the user asks for review, sanity-check, second opinion, or Wise Owl on low-risk work such as docs, prompts, README updates, small plans, small test-only changes, naming cleanup, or low-risk installer/docs polish. Lite is the default for low-risk review/planning requests. Lite must not pretend to be a full review: Selected reviewers are Logic Owl and Prime Owl; Guardian Owl and Proof Owl are `not spawned`. Review status is `complete-lite` only when both Logic Owl and Prime Owl return valid packets.
 
 Wise Owl Standard: Logic Owl + Proof Owl in parallel, then Prime Owl. Use for normal feature work, multi-file non-security changes, API shape changes without sensitive data, test/CI changes, bug fixes with behavior impact, installer behavior, validator behavior, plugin packaging, and config merge logic.
 
@@ -64,11 +64,15 @@ Before spawning reviewers, create a compact Review Packet:
 - known assumptions
 - exact question for each selected reviewer
 
+Before spawn, the builder must strip raw sensitive values from the Review Packet and replace them with typed placeholders such as `[REDACTED:credential]`. Include only the location and sensitive-data type needed to review the issue.
+
 Review Packet construction must finish before spawning critics.
 
 For Final Review, start from `git diff --stat`, changed-file diffs, checks output, and relevant AGENTS.md constraints. Reviewers should inspect extra files only when necessary and should not rescan the entire repo unless the change affects cross-cutting contracts.
 
 [PARALLEL_CRITIC_PHASE]
+Spawn the selected critics directly from the builder. Do not delegate the council to an intermediate subagent when that would consume a reviewer slot. Submit all selected critic spawn requests before waiting so a four-slot runtime can run a Full Council without serializing Proof Owl.
+
 Spawn selected critics concurrently where Codex supports parallel subagents:
 - logic_owl
 - guardian_owl
@@ -91,11 +95,14 @@ If the Review Packet is incomplete after critics are spawned, mark the review pa
 
 [PRIME_REDUCTION_PHASE]
 Send the Review Packet and all valid critic packets to `prime_owl`. Prime Owl must return only the Prime Owl JSON schema.
+
+Validate Prime Owl's packet immediately. If validation fails, send the validation errors and the exact Prime schema back to the same Prime Owl for one correction attempt. Validate the corrected packet; a valid correction is the selected Prime packet and the review may complete. If it still fails, stop and report the review as partial. Do not start a second council or silently repair JSON on Prime Owl's behalf.
 [/PRIME_REDUCTION_PHASE]
 
 Lifecycle rules:
+- Lite is complete-lite only when both Logic Owl and Prime Owl return valid packets. If Logic Owl fails or returns a malformed packet, the review is partial and Prime Owl must not turn empty input into a completed Lite review.
 - Full Council is complete only when Logic Owl, Guardian Owl, Proof Owl, and Prime Owl packets are valid.
-- If a reviewer fails, times out, returns malformed JSON, or cannot be closed cleanly, the run is partial.
+- If a critic fails, times out, returns malformed JSON, or cannot be closed cleanly, the run is partial. Prime Owl makes the run partial only when its single correction attempt also fails validation.
 - Prime Owl may judge available packets only when the builder labels the result as partial.
 - Do not say "all critics returned" unless all selected critics returned valid packets.
 
@@ -228,7 +235,7 @@ Prime Owl output:
 }
 ```
 
-If no accepted findings remain, Prime Owl must return exactly:
+If critics returned no findings, Prime Owl must return exactly:
 
 ```json
 {
@@ -242,7 +249,24 @@ If no accepted findings remain, Prime Owl must return exactly:
 }
 ```
 
-Pass/no-finding Prime Owl results must still validate against the Prime Owl schema. Do not return `role`, `findings`, or `notes`; do not omit `accepted_findings`, `rejected_findings`, or `builder_instructions`. A raw `pass` packet missing those required fields is malformed.
+If every critic finding is rejected, the verdict is still `pass`. Prime Owl must keep every rejected `source_id` in `rejected_findings` so source accounting remains complete:
+
+```json
+{
+  "verdict": "pass",
+  "accepted_findings": [],
+  "rejected_findings": [
+    {
+      "source_ids": ["proof_owl:P-001"],
+      "reason": "low_value",
+      "explanation": "The finding is grounded but does not change builder behavior."
+    }
+  ],
+  "builder_instructions": ["No accepted findings remain."]
+}
+```
+
+Pass Prime Owl results must still validate against the Prime Owl schema. A pass may contain `rejected_findings` when every critic finding was rejected. Do not return `role`, `findings`, or `notes`; do not omit `accepted_findings`, `rejected_findings`, or `builder_instructions`. A raw `pass` packet missing those required fields is malformed.
 
 ## Packet Validation
 
@@ -253,7 +277,7 @@ python3 scripts/wise_owl_validate_packet.py --type critic --file critic.json
 python3 scripts/wise_owl_validate_packet.py --type prime --file prime.json --mode standard --critics logic.json proof.json
 ```
 
-Mode role sets are `lite` with no critics, `standard` with Logic Owl and Proof Owl, `security` with Guardian Owl, and `full` with all three critics. Without `--critics` or `--mode`, Prime validation is syntax/schema-only and must not be reported as source accounting.
+Mode role sets are `lite` with Logic Owl, `standard` with Logic Owl and Proof Owl, `security` with Guardian Owl, and `full` with all three critics. Without `--critics` or `--mode`, Prime validation is syntax/schema-only and must not be reported as source accounting.
 
 ## Builder Rules After Prime Owl
 
@@ -300,7 +324,7 @@ Proof Owl:
 [/WISE_OWL_REVIEW]
 ```
 
-If a role was not used in the selected mode, say `not spawned`. Execution issues must mention failed subagent start, timeout, malformed packet, missing critic packet, failed packet validation, failed or unclean agent closure, Prime Owl not run, or fallback behavior used. If any of those happened, set `Review status: partial` and do not claim a complete Full Council review.
+If a role was not used in the selected mode, say `not spawned`. Execution issues must mention failed subagent start, timeout, malformed packet, missing critic packet, failed packet validation, failed or unclean agent closure, Prime Owl not run, fallback behavior used, or a recovered Prime correction. A recovered Prime correction may complete; unrecovered validation failures and all other listed reviewer failures require `Review status: partial`.
 
 Empty bracket sections are allowed as `none`.
 

@@ -30,6 +30,8 @@ python3 install.py
 python3 install.py --check
 ```
 
+Machine-readable health checks use `python3 install.py --check --json`. Normal check success and failure emit exactly one JSON document on stdout and leave stderr empty; the exit code remains `0` for healthy and `1` for unhealthy. The document contains only allowlisted fields and stable issue codes/managed relative subjects. Candidate update comparison is available only when the invoking distribution separately bundles a three-part numeric version; an installed copy does not treat its own install manifest as a candidate.
+
 The shortcut defaults to `--scope user` and delegates to the same hardened installer below. Python 3.10+ is supported, with no third-party Python packages required.
 
 Dry run:
@@ -54,6 +56,8 @@ Default user-local targets:
 Use `--force` only after reviewing the dry-run output and intentionally overwriting existing Wise Owl files or removing legacy `owl_*` TOMLs. Custom root overrides from environment variables are intended for tests or unusual local Codex layouts; dry-run first so the resolved roots are visible before a non-dry-run install.
 
 Each completed install writes a managed install manifest at `.wise-owl-install.json` inside the installed skill. It stores hashes only for Wise Owl-owned skill and agent files. A later install upgrades files whose current hashes still match and refuses to overwrite local modifications.
+
+Changed files are populated in exclusive same-directory temporary files, file-synced, assigned their intended permissions, and replaced atomically one file at a time. Existing permissions are preserved; a new `config.toml` is `0600`, and other new text files are `0644`. Obsolete managed files are removed before the new manifest is replaced last, so a stale-removal failure leaves the prior ownership record available; `--check` diagnoses a process-interrupted partial install and rerunning the same candidate can finish it without `--force`. This prevents torn individual files during process interruption; it is not a cross-file transaction, rollback mechanism, directory-sync guarantee, or promise of power-loss durability.
 
 Override for testing:
 
@@ -132,7 +136,7 @@ Older installations without a managed manifest are not guessed at. Review the dr
 ## Release Checklist
 
 - Run `python3 scripts/verify_release.py`.
-- Confirm the verifier runs unit, compile, packet, plugin drift, and sandboxed installer checks.
+- Confirm the verifier runs unit, compile, packet, plugin drift, and sandboxed user/repo installer checks, including valid and invalid critic fixtures through both installed validator copies.
 - Optionally regenerate the CLI demo when its source transcript or renderer changes.
 - Confirm user-local install removes legacy `owl_*` TOMLs only when `--force` is intentionally used.
 - Confirm the root `LICENSE` file is present and MIT is selected in `docs/LICENSE_DECISION.md`.
