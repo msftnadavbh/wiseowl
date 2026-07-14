@@ -14,7 +14,7 @@
 - Use only the Python standard library; add no dependencies.
 - Add no hooks, daemons, runtime orchestrators, direct model calls, dashboards, reviewer roles, marketplace publishing, or report-bundle format.
 - Preserve existing human CLI output and exit codes unless a task explicitly defines the new `--json` path.
-- Preserve all valid v0.1 packet shapes and current reviewer role sets.
+- Preserve all valid v0.1 packet shapes and stable reviewer role IDs; mode routing may reuse existing roles.
 - Treat redaction as best-effort instruction hygiene, not a mechanical sanitizer or confidentiality guarantee.
 - Treat installer replacement as per-file torn-write/process-interruption safety, not a cross-file transaction or power-loss guarantee.
 - Follow TDD: each production behavior starts with a focused failing test and a confirmed expected failure.

@@ -74,7 +74,7 @@ Failure-injection tests interrupt after multiple replacements and prove:
 
 - Existing human CLI output and exit codes remain the default.
 - Existing valid v0.1 packet shapes remain valid.
-- Packet schemas and reviewer role sets do not change.
+- Packet schemas and stable reviewer role IDs do not change; Lite routing adds the existing Logic Owl role.
 - Plugin mirrors remain generated from canonical sources.
 - `v0.2.0` remains unreleased; tagging and publishing are outside this work.
 
